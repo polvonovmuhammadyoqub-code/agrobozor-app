@@ -2,6 +2,7 @@
   "name": "agrobozooor",
   "version": "1.0.0",
   "description": "AgroBozor - O'zbekistonning Ishonchli Agro-Savdo Platformasi",
+  "type": "module",
   "workspaces": [
     "client",
     "server"

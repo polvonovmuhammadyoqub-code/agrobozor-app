@@ -29,7 +29,10 @@ pnpm-debug.log*
 *.log
 
 # OS generated files
+.vercel/
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+.vercel
