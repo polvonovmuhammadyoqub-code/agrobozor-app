@@ -1,0 +1,129 @@
+// AgroBozor Prisma Schema
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  phone               String   @unique
+  password_hash       String
+  full_name           String
+  role                String   // 'FARMER', 'BUYER_B2C', 'BUYER_B2B', 'COURIER', 'ADMIN'
+  region              String   // Viloyat / tuman
+  tin_or_passport     String   // STIR yoki pasport seriyasi
+  farm_or_company_name String? // Fermer yoki kompaniya nomi
+  kyc_status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
+  is_premium          Boolean  @default(false)
+  wallet_available    Float    @default(0) // Yechib olish mumkin bo'lgan balans
+  wallet_escrow       Float    @default(0) // Muzlatilgan / kutilayotgan balans
+  rating              Float    @default(5.0)
+  created_at          DateTime @default(now())
+
+  // Relations
+  products            Product[]      @relation("FarmerProducts")
+  buyer_orders        Order[]        @relation("BuyerOrders")
+  farmer_orders       Order[]        @relation("FarmerOrders")
+  courier_orders      Order[]        @relation("CourierOrders")
+  transactions        Transaction[]
+  disputes            Dispute[]
+  reviews_given       Review[]       @relation("Reviewer")
+  reviews_received    Review[]       @relation("ReviewTarget")
+}
+
+model Product {
+  id                    String   @id @default(uuid())
+  farmer_id             String
+  title                 String
+  category              String   // 'MEVALAR', 'SABZAVOTLAR', 'POLIZ', 'SUT_GOSHT', 'DON'
+  price_per_kg          Float
+  available_quantity_kg Float
+  min_order_kg          Float    @default(1)
+  harvest_date          DateTime
+  image_url             String
+  region                String
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now())
+
+  // Relations
+  farmer                User     @relation("FarmerProducts", fields: [farmer_id], references: [id], onDelete: Cascade)
+  orders                Order[]
+}
+
+model Order {
+  id                        String        @id @default(uuid())
+  buyer_id                  String
+  farmer_id                 String
+  courier_id                String?
+  product_id                String
+  quantity_kg               Float
+  product_total_amount      Float
+  delivery_fee              Float         @default(15000)
+  total_paid                Float
+  platform_commission       Float         // product_total_amount * 0.10
+  farmer_payout             Float         // product_total_amount * 0.90
+  courier_payout            Float         @default(12000)
+  platform_logistics_margin Float         @default(3000)
+  payment_method            String        // 'CLICK', 'PAYME', 'UZCARD', 'HUMO', 'INVOICE_B2B'
+  status                    String        // 'PAID_IN_ESCROW', 'CONFIRMED_BY_FARMER', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'DISPUTED', 'REFUNDED'
+  delivery_address          String
+  delivery_schedule         String?       // B2B doimiy jadval, masalan "Dushanba, Payshanba"
+  created_at                DateTime      @default(now())
+
+  // Relations
+  buyer                     User          @relation("BuyerOrders", fields: [buyer_id], references: [id])
+  farmer                    User          @relation("FarmerOrders", fields: [farmer_id], references: [id])
+  courier                   User?         @relation("CourierOrders", fields: [courier_id], references: [id])
+  product                   Product       @relation(fields: [product_id], references: [id])
+  transactions              Transaction[]
+  dispute                   Dispute?
+  reviews                   Review[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  order_id    String?
+  user_id     String
+  amount      Float
+  type        String   // 'ESCROW_HOLD', 'ESCROW_RELEASE_FARMER', 'PLATFORM_COMMISSION', 'COURIER_FEE', 'REFUND', 'PREMIUM_SUBSCRIPTION'
+  created_at  DateTime @default(now())
+
+  // Relations
+  order       Order?   @relation(fields: [order_id], references: [id])
+  user        User     @relation(fields: [user_id], references: [id])
+}
+
+model Dispute {
+  id                 String   @id @default(uuid())
+  order_id           String   @unique
+  buyer_id           String
+  reason             String
+  evidence_image_url String?
+  status             String   @default("OPEN") // 'OPEN', 'RESOLVED_REFUND_FULL', 'RESOLVED_REFUND_PARTIAL', 'RESOLVED_FARMER_WIN'
+  refund_amount      Float?
+  admin_comment      String?
+  created_at         DateTime @default(now())
+
+  // Relations
+  order              Order    @relation(fields: [order_id], references: [id])
+  buyer              User     @relation(fields: [buyer_id], references: [id])
+}
+
+model Review {
+  id             String   @id @default(uuid())
+  order_id       String
+  reviewer_id    String
+  target_user_id String
+  rating         Int
+  comment        String
+  created_at     DateTime @default(now())
+
+  // Relations
+  order          Order    @relation(fields: [order_id], references: [id])
+  reviewer       User     @relation("Reviewer", fields: [reviewer_id], references: [id])
+  target_user    User     @relation("ReviewTarget", fields: [target_user_id], references: [id])
+}
