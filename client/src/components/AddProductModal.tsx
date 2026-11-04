@@ -23,7 +23,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   if (!isOpen) return null;
 
   const [title, setTitle] = useState('');
@@ -92,12 +92,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    // KYC Tekshiruvi
-    if (user?.role === 'FARMER' && user?.kyc_status !== 'APPROVED') {
-      setError('Sizning fermerlik profilingiz hali admin tomonidan tasdiqlanmagan (KYC: PENDING). Tasdiqlangach sotuvga mahsulot chiqara olasiz.');
-      return;
-    }
-
     if (!title || !price || !quantity) {
       setError('Barcha majburiy maydonlarni to\'ldiring');
       return;
@@ -115,6 +109,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         image_url: imageUrl,
         harvest_date: new Date(harvestDate).toISOString(),
       });
+      await refreshUser();
       alert('Mahsulot muvaffaqiyatli sotuvga chiqarildi!');
       onSuccess();
       onClose();
@@ -124,8 +119,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       setSubmitting(false);
     }
   };
-
-  const isKycApproved = user?.role === 'ADMIN' || user?.kyc_status === 'APPROVED';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -144,15 +137,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-          {!isKycApproved && (
-            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 flex items-start space-x-2">
-              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <strong>KYC Tasdiqlanmagan:</strong> Sizning hisobingiz admin tomonidan tekshirilmoqda. Yangi mahsulot qo'shish uchun admin tasdiqlashi kutilmoqda.
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl">
               {error}
@@ -315,7 +299,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={submitting || !isKycApproved}
+              disabled={submitting}
               className="px-5 py-2 bg-agro-green hover:bg-agro-lightGreen text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center space-x-1.5"
             >
               <CheckCircle2 className="w-4 h-4 text-agro-amber" />

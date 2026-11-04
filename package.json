@@ -2,16 +2,26 @@
   "name": "agrobozooor",
   "version": "1.0.0",
   "description": "AgroBozor - O'zbekistonning Ishonchli Agro-Savdo Platformasi",
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "start": "node server/dist/index.js",
     "server": "npm run dev --prefix server",
     "client": "npm run dev --prefix client",
     "build:client": "npm run build --prefix client",
     "build:server": "npm run build --prefix server",
-    "build": "npm run build:client && npm run build:server",
+    "build": "npm run build:server && npm run build:client",
+    "postinstall": "npm run prisma:generate --prefix server",
     "seed": "npm run seed --prefix server"
   },
-  "keywords": ["agro", "ecommerce", "escrow", "uzbekistan"],
+  "keywords": [
+    "agro",
+    "ecommerce",
+    "escrow",
+    "uzbekistan"
+  ],
   "author": "AgroBozor Team",
   "license": "ISC"
 }

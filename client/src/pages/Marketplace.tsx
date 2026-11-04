@@ -11,15 +11,18 @@ import {
   MapPin,
   Calendar,
   CheckCircle,
+  PlusCircle,
 } from 'lucide-react';
 
 interface MarketplaceProps {
   onOrderClick: (product: Product) => void;
+  onOpenAddProduct?: () => void;
   searchQuery: string;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
   onOrderClick,
+  onOpenAddProduct,
   searchQuery,
 }) => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -94,6 +97,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           <p className="text-emerald-100 text-xs sm:text-sm leading-relaxed">
             O'rtakashlarsiz, adolatli narxlarda, yangi uzilgan meva-sabzavotlar. Barcha to'lovlar <strong>Escrow kafolat tizimi</strong> bilan to'liq himoyalangan.
           </p>
+
+          {onOpenAddProduct && (
+            <div className="pt-1">
+              <button
+                onClick={onOpenAddProduct}
+                className="inline-flex items-center space-x-2 bg-agro-amber hover:bg-yellow-400 text-agro-dark font-extrabold px-5 py-2.5 rounded-2xl text-xs sm:text-sm shadow-lg transition-all active:scale-95"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>O'z hosilingizni sotuvga chiqaring (E'lon berish)</span>
+              </button>
+            </div>
+          )}
 
           {/* Afzalliklar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">

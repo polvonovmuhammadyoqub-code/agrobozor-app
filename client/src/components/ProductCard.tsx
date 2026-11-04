@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Product } from '../types';
+import { useCart } from '../context/CartContext';
 import {
   MapPin,
   Star,
@@ -8,6 +9,7 @@ import {
   Clock,
   ShieldCheck,
   ShoppingBag,
+  Check,
 } from 'lucide-react';
 
 interface ProductCardProps {
@@ -16,6 +18,15 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick }) => {
+  const { addToCart } = useCart();
+  const [added, setAdded] = useState(false);
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    addToCart(product);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
   const isTodayHarvest = () => {
     try {
       const harvest = new Date(product.harvest_date);
@@ -144,13 +155,28 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
               </div>
             </div>
 
-            <button
-              onClick={() => onOrderClick(product)}
-              className="flex items-center space-x-1.5 bg-agro-green hover:bg-agro-lightGreen text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-900/10 hover:shadow-emerald-900/25 active:scale-95"
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Sotib olish</span>
-            </button>
+            <div className="flex items-center space-x-1.5">
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                className={`p-2 rounded-xl border transition-all active:scale-95 ${
+                  added
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-agro-green/30 text-agro-green hover:bg-agro-paleGreen'
+                }`}
+                title="Savatga qo'shish"
+              >
+                {added ? <Check className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOrderClick(product)}
+                className="flex items-center space-x-1 bg-agro-green hover:bg-agro-lightGreen text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-900/10 active:scale-95"
+              >
+                <span>Sotib olish</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -10,7 +10,8 @@ import {
   Transaction,
 } from '../types';
 
-const API_BASE = '/api';
+const envApiUrl = (import.meta as any).env?.VITE_API_URL || '';
+const API_BASE = envApiUrl ? `${envApiUrl.replace(/\/$/, '')}/api` : '/api';
 
 export function getToken(): string | null {
   return localStorage.getItem('agro_token');
@@ -63,12 +64,6 @@ export const api = {
         body: JSON.stringify(body),
       }),
     me: () => request<User>('/auth/me'),
-    getDemoUsers: () => request<User[]>('/auth/demo-users'),
-    demoLogin: (userId: string) =>
-      request<{ user: User; token: string }>('/auth/demo-login', {
-        method: 'POST',
-        body: JSON.stringify({ userId }),
-      }),
   },
 
   // Products

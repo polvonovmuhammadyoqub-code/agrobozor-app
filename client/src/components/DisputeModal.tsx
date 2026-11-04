@@ -68,7 +68,7 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
           {error && <div className="p-3 bg-rose-50 text-rose-700 rounded-xl">{error}</div>}
 
           <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-            <div className="font-bold text-gray-900">{order.product.title}</div>
+            <div className="font-bold text-gray-900">{order.product?.title || 'Agro mahsulot'}</div>
             <div className="text-gray-500">
               Buyurtma: #{order.id.slice(0, 8)} • Summa: {order.total_paid.toLocaleString()} so'm
             </div>

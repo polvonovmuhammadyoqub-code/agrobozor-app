@@ -52,7 +52,7 @@ const ROLES = [
     id: 'FARMER' as Role,
     emoji: '👨‍🌾',
     title: "Fermer (Sotuvchi)",
-    desc: "O'z hosilingizni bevosita xaridorlarga soting. KYC tasdiqlanganidan so'ng sotuvga chiqarishingiz mumkin",
+    desc: "O'z hosilingizni bevosita xaridorlarga soting. Mahsulotlaringizni darhol sotuvga chiqarishingiz mumkin",
     color: 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900',
     activeColor: 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400',
     icon: Tractor,
@@ -366,8 +366,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                       />
                     </div>
-                    <p className="text-[10px] text-amber-700 bg-amber-50 p-2 rounded-lg mt-1.5 border border-amber-200">
-                      ⚠️ Ro'yxatdan o'tgach hisobingiz <strong>PENDING</strong> holatida bo'ladi. Admin tasdiqlanganidan so'ng mahsulot sotishingiz mumkin.
+                    <p className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-lg mt-1.5 border border-emerald-200">
+                      ✅ Ro'yxatdan o'tgach darhol o'z mahsulotlaringizni sotuvga chiqarishingiz mumkin!
                     </p>
                   </div>
                 </>

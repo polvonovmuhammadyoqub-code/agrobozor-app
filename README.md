@@ -1,93 +1,77 @@
-# 🌾 AgroBozor — To'liq Ishlaydigan Full-Stack Agro-Savdo Platformasi
+# 🌾 AgroBozor — O'zbekistonning Ishonchli va Xavfsiz Agro-Savdo Platformasi
 
-**AgroBozor** — O'zbekistondagi fermerlar, bog'bonlar, xaridorlar (B2C & B2B) hamda tezkor logistika kuryerlarini yagona xavfsiz **Escrow to'lov tizimi** ostida birlashtiruvchi zamonaviy agro-savdo platformasi.
+**AgroBozor** — O'zbekistondagi fermerlar, bog'bonlar, xaridorlar (B2C & B2B) hamda tezkor logistika kuryerlarini yagona xavfsiz **Escrow to'lov tizimi** ostida birlashtiruvchi zamonaviy real agro-savdo platformasi.
 
-Ilova hech qanday statik/soxta (mock) ma'lumotlarsiz, to'liq **Node.js/Express + Prisma ORM + SQLite** ma'lumotlar bazasi va **React (TypeScript) + Tailwind CSS** frontend bilan to'liq ishlaydigan holda yaratilgan.
+Haqiqiy foydalanuvchilar platformaga kirib, o'z telefon raqamlari orqali ro'yxatdan o'tib, darhol o'z hosillarini sotuvga chiqarishlari (olma, uzum, go'sht, pomidor va h.k.) yoki yangi qishloq xo'jaligi mahsulotlarini sotib olishlari mumkin.
 
 ---
 
 ## 🚀 Texnik Stek
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Lucide Icons, Vite
 - **Backend:** Node.js, Express, TypeScript (TSX)
-- **Ma'lumotlar bazasi:** SQLite + Prisma ORM (to'liq tranzaksiyalar va ACID xususiyatlari bilan)
-- **Autentifikatsiya:** JWT Token + bcrypt parollash + SMS OTP simulyatsiyasi (1111)
-- **Dizayn uslubi:** To'q yashil (`#1B4D3E`), to'q sariq/amber (`#F59E0B`) va oq ranglar, mobile-first, to'liq o'zbek tilidagi interfeys.
+- **Ma'lumotlar bazasi:** Prisma ORM (SQLite / PostgreSQL moslashuvchan qo'llab-quvvatlash bilan)
+- **Autentifikatsiya:** JWT Token + bcrypt parollash
+- **Deploy:** Vercel (Frontend + Serverless API), Render, Railway yoki VPS
 
 ---
 
-## 👥 Tayyor Test Foydalanuvchilari (Demo Rejim)
+## 🌟 Asosiy Imkoniyatlar
 
-Platformaning yuqori qismidagi **"Rolni almashtirish"** tugmasi orqali istalgan rolga 1-bosishda o'tish mumkin (Barcha parollar: `123456` yoki OTP `1111`):
+1. **Haqiqiy Foydalanuvchilar va Oson E'lon Berish**:
+   - Har qanday yangi ro'yxatdan o'tgan foydalanuvchi bir bosishda **"+ Mahsulot qo'shish"** tugmasi orqali o'z mahsulotini sotuvga chiqara oladi.
+   - Hech qanday sun'iy to'siq yoki kutishlarsiz, mahsulot darhol Bozorda (Marketplace) paydo bo'ladi.
+   - Fermer kabinetida tushgan buyurtmalar va o'z mahsulotlarini boshqarish.
 
-| Rol | Ism-familiya | Telefon | Holat / Xususiyat |
-| :--- | :--- | :--- | :--- |
-| 👨‍🌾 **Fermer (Tasdiqlangan)** | Anvar Qodirov | `+998901112233` | KYC: `APPROVED`, Oltin Premium fermer, Parkent uzumlari |
-| 🚜 **Fermer (Kutilmoqda)** | Rustam Karimov | `+998902223344` | KYC: `PENDING`, admin tasdiqlamaguncha sotuv cheklangan |
-| 🛒 **Xaridor (B2C)** | Dilshod Aliyev | `+998903334455` | Chakana xarid, Escrow kafolati, sharh qoldirish |
-| 🏢 **Xaridor (B2B)** | Bekzod Rahimov | `+998904445566` | "Rayhon" restorani, B2B Invoice, rejalashtirilgan yetkazish |
-| 🚚 **Kuryer** | Jasur Shodiyev | `+998905556677` | 12 000 so'm/yetkazuv daromadi, faol yetkazishlar boshqaruvi |
-| 🛡️ **Bosh Admin** | Bosh Administrator | `+998909998877` | Real vaqt KPI (GMV, AOV, Komissiya), KYC tasdiqlash, Nizolar arbitraji |
+2. **100% Xavfsiz Escrow Tizimi**:
+   - Xaridor to'lov qilganda mablag' platformaning xavfsiz Escrow hisobida muzlatiladi.
+   - Kuryer mahsulotni yetkazib bergach, xaridor "Qabul qildim" deb tasdiqlaganidan so'nggina pul sotuvchi fermer va kuryer hisobiga o'tkaziladi.
 
----
+3. **Nizolar Arbitraji (Dispute Resolution)**:
+   - Sifatsiz yoki shikastlangan mahsulot yetib kelganda, xaridor fotosurat ilova qilib nizo ochishi mumkin.
+   - Bosh admin arbitraj orqali to'liq qaytarish, 50/50 taqsimlash yoki fermer foydasiga qaror qabul qiladi.
 
-## 🔒 Biznes Mantiqi va Escrow Tizimi
+4. **B2B Ulgurji Savdo va Rasmiy Hisob-faktura (Invoice)**:
+   - Restoran, do'kon va korxonalar uchun rasmiy elektron muhrli B2B Invoice generatsiya qilish va PDF/chop etish.
 
-1. **Xavfsiz Escrow Buyurtma (`POST /api/orders`)**:
-   - Xaridor to'lov qilganda ombordagi qoldiq (`available_quantity_kg`) avtomatik kamaytiriladi.
-   - Buyurtma `PAID_IN_ESCROW` statusida yaratiladi.
-   - Mahsulot narxining 90% qismi fermerning muzlatilgan `wallet_escrow` hisobiga tushadi.
-2. **Buyurtma Zanjiri**:
-   - Fermer: "Tasdiqlash" (`CONFIRMED_BY_FARMER`).
-   - Kuryer: "Yetkazib berishga olish" (`IN_TRANSIT`), kuryer ID biriktiriladi.
-   - Kuryer: "Mijozga yetkazdim" (`DELIVERED`).
-3. **Escrowdan Pulni Yechish (`POST /api/orders/:id/complete`)**:
-   - Xaridor mahsulotni ko'zdan kechirib, "Qabul qildim, e'tirozim yo'q" tugmasini bosganda:
-     - Fermerning `wallet_escrow` balansidan 90% pul yechilib, `wallet_available` (yechib olish mumkin bo'lgan) balansiga o'tkaziladi.
-     - Kuryerning `wallet_available` balansiga 12 000 so'm o'tkaziladi.
-     - Platforma hisobiga 10% komissiya + 3 000 so'm logistika marjasi yoziladi.
-     - Xaridorga 1-5 yulduzli baholash oynasi ochiladi va fermer reytingi qayta hisoblanadi.
-4. **Nizolar Arbitraji (`POST /api/disputes`)**:
-   - Sifatsiz mahsulot kelsa, xaridor "Shikoyat qilish" tugmasini bosadi va dalil rasmini kiritadi.
-   - Buyurtma `DISPUTED` holatiga o'tadi, pul Escrowda to'xtatiladi.
-   - Admin arbitrajda 3 ta qarordan birini qabul qiladi:
-     1. *To'liq qaytarish* (Xaridorga 100% pul qaytariladi)
-     2. *50/50 qisman qoplash* (Yarim pul xaridorga, yarmi fermerga)
-     3. *Fermer haq* (Pul to'liq fermerga o'tadi)
-5. **Aqlli Narx Tavsiyasi (`GET /api/price-recommendation`)**:
-   - Yangi mahsulot qo'shilayotganda tanlangan kategoriya va viloyat bo'yicha mavjud barcha partiyalarning o'rtacha narxi (`AVG`) hisoblanib, fermerga tavsiya etiladi.
-6. **B2B Hisob-faktura (Invoice)**:
-   - Restoran va korxonalar uchun rasmiy STIR, manzil, yetkazib berish jadvali, QR-kod va elektron raqamli muhrli Invoice generatsiya qilinadi va chop etish/PDF yuklash imkoniyati mavjud.
+5. **Aqlli Bozor Narxi Tavsiyasi**:
+   - Kategoriya va viloyat bo'yicha bozorning o'rtacha narxini tahlil qilib, sotuvchiga eng maqbul narxni tavsiya qilish.
 
 ---
 
-## 🛠️ Loyihani Ishga Tushirish
+## ☁️ Vercel ga Deploy Qilish
 
-### 1. Qaramliklarni o'rnatish:
+Loyiha Vercel ga 1-bosishda deploy qilish uchun to'liq sozlangan:
+
+### 1-usul: GitHub orqali Vercel ga ulash (Tavsiya etiladi)
+1. Ushbu GitHub repozitoriyangizni [Vercel](https://vercel.com) ga import qiling.
+2. Vercel loyiha sozlamalarida standart sozlamalar avtomatik aniqlanadi:
+   - **Framework Preset:** Vite
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `client/dist`
+3. **Environment Variables** (Ixtiyoriy, agar PostgreSQL ishlatmoqchi bo'lsangiz):
+   - `DATABASE_URL` — Masalan, Neon yoki Supabase PostgreSQL ulanish havolasi: `postgresql://user:password@host/dbname?sslmode=require`
+   - `JWT_SECRET` — Maxfiy JWT kalitingiz
+4. **Deploy** tugmasini bosing!
+
+> **Eslatma:** Agar `DATABASE_URL` kiritilmasa, loyiha Vercel serverless muhitida xavfsiz SQLite bazasi bilan ishlaydi. Real ishlab chiqarish (production) ma'lumotlarini saqlab qolish uchun bepul [Neon.tech](https://neon.tech) yoki [Supabase](https://supabase.com) PostgreSQL ma'lumotlar bazasini `DATABASE_URL` ga kiritish tavsiya etiladi.
+
+---
+
+## 💻 Mahalliy Kompyuterda Ishga Tushirish
+
 ```bash
-# Server qaramliklari
-cd server && npm install
+# 1. Qaramliklarni o'rnatish
+npm install
 
-# Frontend qaramliklari
-cd ../client && npm install
-```
+# 2. Ma'lumotlar bazasini yaratish
+npm run build:server
 
-### 2. Ma'lumotlar bazasini yaratish va to'ldirish:
-```bash
-cd server
-npx prisma db push
-npm run seed
-```
-
-### 3. Server va Frontendni ishga tushirish:
-```bash
-# Variant A: Serverdan to'liq ishga tushirish (Frontend build qilingan holda)
-cd server
+# 3. Loyihani to'liq ishga tushirish (Frontend + Backend)
+npm run build
 npm start
 # http://localhost:5000 da ishlaydi
 
-# Variant B: Development rejimida
-# Terminal 1:
-cd server && npm run dev
-# Terminal 2:
-cd client && npm run dev
+# Yoki development rejimida alohida ishga tushirish:
+npm run server  # Terminal 1 da (port 5000)
+npm run client  # Terminal 2 da (port 3000)
 ```

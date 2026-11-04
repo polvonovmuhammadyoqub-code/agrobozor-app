@@ -206,18 +206,24 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 4. Yangi mahsulot qo'shish (Faqat KYC tasdiqlangan Fermerlar uchun)
-router.post('/', authenticateToken, requireRole(['FARMER', 'ADMIN']), async (req: AuthRequest, res: Response) => {
+// 4. Yangi mahsulot qo'shish (Barcha ro'yxatdan o'tgan foydalanuvchilar va fermerlar uchun)
+router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) {
       return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
     }
 
-    // KYC Tekshiruvi!
-    if (user.role === 'FARMER' && user.kyc_status !== 'APPROVED') {
-      return res.status(403).json({
-        error: 'Sizning hisobingiz hali admin tomonidan tasdiqlanmagan (KYC: PENDING). Tasdiqlangandan so\'ng mahsulot qo\'shishingiz mumkin.',
+    // Foydalanuvchini sotuvchi sifatida faollashtiramiz va tasdiqlaymiz
+    if (user.role !== 'FARMER' && user.role !== 'ADMIN') {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'FARMER', kyc_status: 'APPROVED' },
+      });
+    } else if (user.kyc_status !== 'APPROVED') {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { kyc_status: 'APPROVED' },
       });
     }
 

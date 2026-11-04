@@ -70,6 +70,13 @@ const AppContent: React.FC = () => {
         openCartDrawer={() => setIsCartOpen(true)}
         onOpenLogin={() => setIsLoginOpen(true)}
         onOpenRegister={() => setIsRegisterOpen(true)}
+        onOpenAddProduct={() => {
+          if (!user) {
+            setIsLoginOpen(true);
+            return;
+          }
+          setIsAddProductOpen(true);
+        }}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -81,6 +88,13 @@ const AppContent: React.FC = () => {
                 return;
               }
               setOrderModalProduct(product);
+            }}
+            onOpenAddProduct={() => {
+              if (!user) {
+                setIsLoginOpen(true);
+                return;
+              }
+              setIsAddProductOpen(true);
             }}
             searchQuery={searchQuery}
           />

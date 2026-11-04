@@ -194,7 +194,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="font-extrabold text-sm text-gray-900">
-                        {o.product.title} ({o.quantity_kg} kg)
+                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
                       </span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
                         +12 000 so'm kuryer haqi
@@ -203,13 +203,13 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                     <div className="text-gray-600 flex items-center space-x-1">
                       <MapPin className="w-3.5 h-3.5 text-gray-400" />
                       <span>
-                        Fermerdan olish: <strong>{o.farmer.region}</strong> ({o.farmer.full_name})
+                        Fermerdan olish: <strong>{o.farmer?.region || 'Fermer manzili'}</strong> ({o.farmer?.full_name || 'Fermer'})
                       </span>
                     </div>
                     <div className="text-gray-600 flex items-center space-x-1">
                       <MapPin className="w-3.5 h-3.5 text-emerald-600" />
                       <span>
-                        Mijozga eltish: <strong>{o.delivery_address}</strong> ({o.buyer.full_name})
+                        Mijozga eltish: <strong>{o.delivery_address}</strong> ({o.buyer?.full_name || 'Xaridor'})
                       </span>
                     </div>
                   </div>
@@ -241,7 +241,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="font-extrabold text-sm text-gray-900">
-                        {o.product.title} ({o.quantity_kg} kg)
+                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
                       </span>
                       <span className="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
                         Yo'lda
@@ -251,7 +251,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                       Yetkazish manzili: <strong>{o.delivery_address}</strong>
                     </div>
                     <div className="text-gray-600">
-                      Mijoz: {o.buyer.full_name} ({o.buyer.phone})
+                      Mijoz: {o.buyer?.full_name || 'Xaridor'} ({o.buyer?.phone || ''})
                     </div>
                   </div>
 
@@ -281,7 +281,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                   className="p-4 rounded-xl border border-gray-100 bg-white flex justify-between items-center text-xs"
                 >
                   <div>
-                    <div className="font-bold text-gray-900">{o.product.title}</div>
+                    <div className="font-bold text-gray-900">{o.product?.title || 'Agro mahsulot'}</div>
                     <div className="text-gray-500">Manzil: {o.delivery_address}</div>
                   </div>
                   <div className="text-right">

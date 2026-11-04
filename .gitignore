@@ -6,6 +6,8 @@ node_modules/
 dist/
 client/dist/
 server/dist/
+*.tsbuildinfo
+client/tsconfig.tsbuildinfo
 
 # Environment files
 .env

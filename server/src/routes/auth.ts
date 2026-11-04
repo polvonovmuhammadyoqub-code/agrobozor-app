@@ -30,8 +30,8 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     const password_hash = await bcrypt.hash(password, 10);
-    // Fermer uchun dastlab PENDING, boshqa rollar uchun APPROVED
-    const kyc_status = role === 'FARMER' ? 'PENDING' : 'APPROVED';
+    // Real foydalanuvchilar darhol mahsulot sota olishi uchun kyc_status APPROVED
+    const kyc_status = 'APPROVED';
 
     const user = await prisma.user.create({
       data: {
@@ -131,57 +131,9 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
   }
 });
 
-// Test / Demo uchun barcha foydalanuvchilar ro'yxati (Tezkor almashish uchun)
+// Demo endpointlar real rejimda yopiq
 router.get('/demo-users', async (_req: Request, res: Response) => {
-  try {
-    const users = await prisma.user.findMany({
-      select: {
-        id: true,
-        phone: true,
-        full_name: true,
-        role: true,
-        region: true,
-        kyc_status: true,
-        is_premium: true,
-        farm_or_company_name: true,
-        wallet_available: true,
-        wallet_escrow: true,
-        rating: true,
-      },
-      orderBy: { created_at: 'asc' },
-    });
-    return res.json(users);
-  } catch (err) {
-    return res.status(500).json({ error: 'Foydalanuvchilarni olishda xatolik' });
-  }
-});
-
-// Demo foydalanuvchi sifatida 1-bosishda kirish
-router.post('/demo-login', async (req: Request, res: Response) => {
-  try {
-    const { userId } = req.body;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ error: 'Demo foydalanuvchi topilmadi' });
-    }
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        phone: user.phone,
-        role: user.role,
-        full_name: user.full_name,
-        kyc_status: user.kyc_status,
-      },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-
-    const { password_hash: _, ...safeUser } = user;
-    return res.json({ user: safeUser, token });
-  } catch (err) {
-    return res.status(500).json({ error: 'Demo kirishda xatolik' });
-  }
+  return res.json([]);
 });
 
 export default router;
