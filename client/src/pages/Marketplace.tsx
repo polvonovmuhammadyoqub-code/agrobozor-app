@@ -227,12 +227,21 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             <p className="mt-2 text-xs text-gray-500 font-medium">Mahsulotlar yuklanmoqda...</p>
           </div>
         ) : products.length === 0 ? (
-          <div className="py-16 text-center bg-white rounded-3xl border border-gray-200 p-8">
-            <Layers className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-            <h3 className="text-base font-bold text-gray-800">Ushbu parametrlar bo'yicha mahsulot topilmadi</h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-              Boshqa kategoriya yoki viloyatni tanlab ko'ring, yoki filtrlarni tozalang.
+          <div className="py-16 text-center bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
+            <Layers className="w-12 h-12 text-agro-green/40 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-gray-800">Bozorda hozircha yangi mahsulotlar kutilmoqda</h3>
+            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto mb-5">
+              Siz birinchi bo'lib o'z hosilingiz yoki mahsulotingizni AgroBozor platformasiga joylashtirishingiz mumkin!
             </p>
+            {onOpenAddProduct && (
+              <button
+                onClick={onOpenAddProduct}
+                className="inline-flex items-center space-x-2 bg-agro-green hover:bg-agro-lightGreen text-white px-5 py-2.5 rounded-2xl text-xs font-extrabold shadow-md shadow-emerald-900/15 transition-all"
+              >
+                <PlusCircle className="w-4 h-4 text-agro-amber" />
+                <span>+ Birinchi bo'lib mahsulot joylang</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">

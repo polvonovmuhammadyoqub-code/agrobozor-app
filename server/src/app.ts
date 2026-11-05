@@ -22,29 +22,36 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Marshrutlar
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
+// Marshrutlarni ro'yxatdan o'tkazish (/api va / uchun universal)
+function registerRoutes(prefix: string) {
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/products`, productRoutes);
 
-// Maxsus talab qilingan: /api/price-recommendation to'g'ridan-to'g'ri chaqiruv
-app.use('/api/price-recommendation', (req, res, next) => {
-  req.url = '/price-recommendation' + (req.url === '/' ? '' : req.url);
-  productRoutes(req, res, next);
-});
-
-app.use('/api/orders', orderRoutes);
-app.use('/api/disputes', disputeRoutes);
-app.use('/api/reviews', reviewRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/users', userRoutes);
-
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'AgroBozor Backend API faol ishlamoqda',
-    timestamp: new Date().toISOString(),
+  // Maxsus talab qilingan: /price-recommendation to'g'ridan-to'g'ri chaqiruv
+  app.use(`${prefix}/price-recommendation`, (req, res, next) => {
+    req.url = '/price-recommendation' + (req.url === '/' ? '' : req.url);
+    productRoutes(req, res, next);
   });
-});
+
+  app.use(`${prefix}/orders`, orderRoutes);
+  app.use(`${prefix}/disputes`, disputeRoutes);
+  app.use(`${prefix}/reviews`, reviewRoutes);
+  app.use(`${prefix}/admin`, adminRoutes);
+  app.use(`${prefix}/users`, userRoutes);
+
+  app.get(`${prefix}/health`, (_req, res) => {
+    res.json({
+      status: 'ok',
+      message: 'AgroBozor Backend API faol ishlamoqda',
+      timestamp: new Date().toISOString(),
+    });
+  });
+}
+
+// 1. Standart /api marshrutlari
+registerRoutes('/api');
+// 2. Vercel Serverless Function /api ni qirqib yuborishi mumkin bo'lgan holatlar uchun fallback
+registerRoutes('');
 
 // Productionda Vite build qilingan statik fayllarni xizmat ko'rsatish
 const clientDist = path.join(__dirname, '../../client/dist');

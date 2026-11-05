@@ -110,7 +110,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         harvest_date: new Date(harvestDate).toISOString(),
       });
       await refreshUser();
-      alert('Mahsulot muvaffaqiyatli sotuvga chiqarildi!');
       onSuccess();
       onClose();
     } catch (err: any) {

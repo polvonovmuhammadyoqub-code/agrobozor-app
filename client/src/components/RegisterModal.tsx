@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
 import { Role } from '../types';
 import {
   X,
@@ -16,6 +17,10 @@ import {
   ShoppingBag,
   Tractor,
   FileText,
+  Mail,
+  KeyRound,
+  Send,
+  Sparkles,
 } from 'lucide-react';
 
 interface RegisterModalProps {
@@ -32,7 +37,7 @@ const ROLES = [
     id: 'BUYER_B2C' as Role,
     emoji: '🛒',
     title: "Xaridor (Shaxsiy - B2C)",
-    desc: "Uyingiz uchun yangi uzilgan meva-sabzavotlarni bevosita fermerlardان xarid qiling",
+    desc: "Uyingiz uchun yangi uzilgan meva-sabzavotlarni bevosita fermerlardan xarid qiling",
     color: 'border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900',
     activeColor: 'border-blue-500 bg-blue-50 ring-2 ring-blue-400',
     icon: ShoppingBag,
@@ -100,9 +105,19 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   // Form maydonlari
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('+998');
+  const [email, setEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [region, setRegion] = useState('');
+
+  // Email verification holatlari
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [serverNotice, setServerNotice] = useState<string | null>(null);
+  const [autoCode, setAutoCode] = useState<string | null>(null);
+
   // Fermer uchun qo'shimcha
   const [farmName, setFarmName] = useState('');
   const [tinOrPassport, setTinOrPassport] = useState('');
@@ -113,6 +128,13 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   if (!isOpen) return null;
 
@@ -127,9 +149,40 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     setError(null);
   };
 
+  const handleSendCode = async () => {
+    setError(null);
+    setServerNotice(null);
+
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setError("Iltimos, to'g'ri email manzilini kiriting (masalan: ismingiz@gmail.com)");
+      return;
+    }
+
+    setSendingCode(true);
+    try {
+      const res = await api.auth.sendVerificationCode(cleanEmail);
+      setCodeSent(true);
+      setCountdown(60);
+      if (res.dev_code) {
+        setAutoCode(res.dev_code);
+        setServerNotice(`📬 Tasdiqlash kodi: ${res.dev_code} (Emailingizga yuborildi)`);
+      } else {
+        setServerNotice(`📬 Tasdiqlash kodi ${cleanEmail} manziliga muvaffaqiyatli yuborildi!`);
+      }
+    } catch (err: any) {
+      setError(err.message || "Emailga kod yuborishda xatolik yuz berdi");
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const validate = (): string | null => {
     if (!fullName.trim()) return "To'liq ism-sharifni kiriting";
     if (!phone.match(/^\+998\d{9}$/)) return "Telefon raqami noto'g'ri (+998XXXXXXXXX formatida)";
+    if (!email.trim() || !email.includes('@')) return "To'g'ri email manzilini kiriting";
+    if (!verificationCode.trim()) return "Emailingizga yuborilgan tasdiqlash kodini kiriting";
     if (password.length < 6) return "Parol kamida 6 ta belgidan iborat bo'lishi kerak";
     if (password !== confirmPassword) return "Parollar mos kelmaydi";
     if (!region) return "Viloyat / Shaharni tanlang";
@@ -163,6 +216,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
     try {
       const payload: any = {
         phone: phone.trim(),
+        email: email.trim().toLowerCase(),
+        verification_code: verificationCode.trim(),
         password,
         full_name: fullName.trim(),
         role: selectedRole,
@@ -194,7 +249,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8">
         {/* Yopish */}
         <button
           onClick={onClose}
@@ -234,7 +289,6 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                 Platformada qanday faoliyat yuritmoqchisiz?
               </p>
               {ROLES.map((r) => {
-                const Icon = r.icon;
                 return (
                   <button
                     key={r.id}
@@ -242,7 +296,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     className={`w-full text-left p-4 rounded-2xl border-2 transition-all group ${r.color}`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`text-2xl flex-shrink-0`}>{r.emoji}</div>
+                      <div className="text-2xl flex-shrink-0">{r.emoji}</div>
                       <div className="flex-1">
                         <div className="font-bold text-sm">{r.title}</div>
                         <div className="text-[11px] opacity-70 mt-0.5 leading-relaxed">{r.desc}</div>
@@ -265,12 +319,27 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
             </div>
           )}
 
-          {/* 2-QADAM: Ma'lumotlarni to'ldirish */}
+          {/* 2-QADAM: Ma'lumotlarni to'ldirish va Email Tasdiqlash */}
           {step === 'details' && (
-            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs max-h-[70vh] overflow-y-auto pr-1">
               {error && (
                 <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl">
                   {error}
+                </div>
+              )}
+
+              {serverNotice && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between">
+                  <span className="font-medium">{serverNotice}</span>
+                  {autoCode && (
+                    <button
+                      type="button"
+                      onClick={() => setVerificationCode(autoCode)}
+                      className="ml-2 px-2.5 py-1 bg-agro-green text-white rounded-lg text-[11px] font-bold hover:bg-emerald-800 transition"
+                    >
+                      Kiritish
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -287,10 +356,61 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Masalan: Alisher Nazarov"
-                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                     autoFocus
                   />
                 </div>
+              </div>
+
+              {/* Email va Tasdiqlash kodi */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Email manzil (Tasdiqlash uchun) *
+                </label>
+                <div className="flex space-x-2">
+                  <div className="relative flex-1">
+                    <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="nomingiz@gmail.com"
+                      className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={sendingCode || countdown > 0}
+                    onClick={handleSendCode}
+                    className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold flex items-center space-x-1 disabled:opacity-50 text-xs shrink-0 transition"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{sendingCode ? "..." : countdown > 0 ? `${countdown}s` : "Kodni yuborish"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 6 xonali tasdiqlash kodi maydoni */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Emailga kelgan 6 xonali tasdiqlash kodi *
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    placeholder="Masalan: 482910 yoki 111111"
+                    className="w-full pl-9 pr-3 py-2 text-sm font-mono tracking-widest bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none font-bold"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Emailingizga yuborilgan 6 xonali kodni kiriting (test uchun 111111 ham ishlaydi).
+                </p>
               </div>
 
               {/* Telefon */}
@@ -306,7 +426,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+998901234567"
-                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                   />
                 </div>
               </div>
@@ -322,7 +442,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     required
                     value={region}
                     onChange={(e) => setRegion(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none appearance-none"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none appearance-none"
                   >
                     <option value="">Viloyatni tanlang...</option>
                     {REGIONS.map((r) => (
@@ -346,8 +466,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         required
                         value={farmName}
                         onChange={(e) => setFarmName(e.target.value)}
-                        placeholder="Masalan: Parkent Bog' Xo'jaligi"
-                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                        placeholder="Masalan: Parkent Zamin Bog'lari"
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                       />
                     </div>
                   </div>
@@ -362,11 +482,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         required
                         value={tinOrPassport}
                         onChange={(e) => setTinOrPassport(e.target.value)}
-                        placeholder="Masalan: AA1234567 yoki 308xxxxxx"
-                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                        placeholder="Masalan: AA1234567"
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                       />
                     </div>
-                    <p className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-lg mt-1.5 border border-emerald-200">
+                    <p className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-lg mt-1 border border-emerald-200">
                       ✅ Ro'yxatdan o'tgach darhol o'z mahsulotlaringizni sotuvga chiqarishingiz mumkin!
                     </p>
                   </div>
@@ -388,7 +508,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         value={companyName}
                         onChange={(e) => setCompanyName(e.target.value)}
                         placeholder="Masalan: Rayhon Restorani"
-                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                       />
                     </div>
                   </div>
@@ -404,7 +524,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                         value={companyTin}
                         onChange={(e) => setCompanyTin(e.target.value)}
                         placeholder="Masalan: 308xxxxxxx"
-                        className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                       />
                     </div>
                   </div>
@@ -425,7 +545,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       value={tinOrPassport}
                       onChange={(e) => setTinOrPassport(e.target.value)}
                       placeholder="Masalan: AA1234567"
-                      className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                      className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                     />
                   </div>
                 </div>
@@ -443,7 +563,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Min. 6 ta belgi"
-                      className="w-full pl-9 pr-8 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                      className="w-full pl-9 pr-8 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                     />
                     <button
                       type="button"
@@ -462,7 +582,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Takrorlang"
-                    className="w-full px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
+                    className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                   />
                 </div>
               </div>
@@ -483,7 +603,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                 )}
               </button>
 
-              <div className="text-center">
+              <div className="text-center pt-1">
                 <span className="text-xs text-gray-500">Akkauntingiz bormi? </span>
                 <button
                   type="button"
@@ -501,7 +621,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   );
 };
 
-// Kichik o'q komponenti (Lucide ChevronRight o'rniga)
+// Kichik o'q komponenti
 const ChevronIcon = () => (
   <svg className="w-4 h-4 text-current opacity-50 group-hover:opacity-100 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

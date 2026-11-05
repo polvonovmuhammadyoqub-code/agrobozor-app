@@ -11,6 +11,7 @@ generator client {
 model User {
   id                  String   @id @default(uuid())
   phone               String   @unique
+  email               String?  @unique
   password_hash       String
   full_name           String
   role                String   // 'FARMER', 'BUYER_B2C', 'BUYER_B2B', 'COURIER', 'ADMIN'
@@ -126,4 +127,14 @@ model Review {
   order          Order    @relation(fields: [order_id], references: [id])
   reviewer       User     @relation("Reviewer", fields: [reviewer_id], references: [id])
   target_user    User     @relation("ReviewTarget", fields: [target_user_id], references: [id])
+}
+
+model EmailVerification {
+  id         String   @id @default(uuid())
+  email      String
+  code       String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([email])
 }

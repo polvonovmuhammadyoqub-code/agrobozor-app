@@ -58,6 +58,16 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ phone, password, otp }),
       }),
+    sendVerificationCode: (email: string) =>
+      request<{ success: boolean; message: string; dev_code?: string }>('/auth/send-verification-code', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+    verifyCode: (email: string, code: string) =>
+      request<{ success: boolean; verified: boolean }>('/auth/verify-code', {
+        method: 'POST',
+        body: JSON.stringify({ email, code }),
+      }),
     register: (body: any) =>
       request<{ user: User; token: string }>('/auth/register', {
         method: 'POST',

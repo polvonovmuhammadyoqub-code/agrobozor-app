@@ -9,7 +9,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "node scripts/prepare-db.js && prisma generate",
-    "prisma:push": "node scripts/prepare-db.js && prisma db push",
+    "prisma:push": "node scripts/prepare-db.js && prisma db push --accept-data-loss",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

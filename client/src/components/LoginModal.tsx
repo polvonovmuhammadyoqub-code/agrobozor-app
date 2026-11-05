@@ -24,7 +24,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onSwitchToRegister,
 }) => {
   const { login } = useAuth();
-  const [phone, setPhone] = useState('+998');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -36,9 +36,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setError(null);
 
-    const cleanPhone = phone.trim();
-    if (!cleanPhone || cleanPhone === '+998') {
-      setError("Telefon raqamini kiriting");
+    const cleanIdentifier = phone.trim();
+    if (!cleanIdentifier) {
+      setError("Telefon raqami yoki email manzilini kiriting");
       return;
     }
     if (!password.trim()) {
@@ -48,10 +48,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     setLoading(true);
     try {
-      await login(cleanPhone, password);
+      await login(cleanIdentifier, password);
       onClose();
     } catch (err: any) {
-      setError(err.message || "Telefon raqami yoki parol noto'g'ri");
+      setError(err.message || "Telefon raqami/email yoki parol noto'g'ri");
     } finally {
       setLoading(false);
     }
@@ -97,18 +97,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
           {/* Kirish Formasi */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Telefon raqami */}
+            {/* Telefon raqami yoki Email */}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">
-                Telefon raqami
+                Telefon raqami yoki Email
               </label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  type="tel"
+                  type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+998901234567"
+                  placeholder="+998901234567 yoki email@gmail.com"
                   className="w-full pl-9 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none focus:ring-2 focus:ring-agro-green/20 transition-all font-medium"
                   autoFocus
                 />

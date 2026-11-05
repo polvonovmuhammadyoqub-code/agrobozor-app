@@ -20,6 +20,7 @@ export type DisputeStatus =
 export interface User {
   id: string;
   phone: string;
+  email?: string;
   full_name: string;
   role: Role;
   region: string;
