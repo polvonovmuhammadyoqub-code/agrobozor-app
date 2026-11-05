@@ -16,9 +16,7 @@ client/tsconfig.tsbuildinfo
 server/.env
 
 # SQLite databases
-*.db
 *.db-journal
-server/prisma/*.db
 server/prisma/*.db-journal
 
 # Logs
