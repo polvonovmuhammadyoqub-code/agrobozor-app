@@ -20,10 +20,14 @@ if (isVercel && (!dbUrl || dbUrl.startsWith('file:'))) {
       path.join(__dirname, '../prisma/dev.db'),
       path.join(__dirname, '../../server/prisma/dev.db'),
       path.join(__dirname, '../../../server/prisma/dev.db'),
+      path.join(__dirname, 'prisma/dev.db'),
+      path.join(__dirname, '../../prisma/dev.db'),
       path.join(process.cwd(), 'server/prisma/dev.db'),
       path.join(process.cwd(), 'prisma/dev.db'),
       path.resolve('server/prisma/dev.db'),
+      path.resolve('prisma/dev.db'),
       '/var/task/server/prisma/dev.db',
+      '/var/task/prisma/dev.db',
     ];
     for (const p of candidatePaths) {
       if (fs.existsSync(p)) {

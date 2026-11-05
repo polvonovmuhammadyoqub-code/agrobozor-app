@@ -17,6 +17,17 @@
     "postinstall": "npm run prisma:generate --prefix server",
     "seed": "npm run seed --prefix server"
   },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  },
   "keywords": [
     "agro",
     "ecommerce",
