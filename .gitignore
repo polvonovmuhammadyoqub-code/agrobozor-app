@@ -3,9 +3,10 @@ node_modules/
 */node_modules/
 
 # Production builds
-dist/
-client/dist/
-server/dist/
+/dist/
+/client/dist/
+!server/dist/
+!server/dist/**
 *.tsbuildinfo
 client/tsconfig.tsbuildinfo
 
