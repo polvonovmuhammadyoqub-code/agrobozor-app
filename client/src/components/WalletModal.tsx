@@ -98,6 +98,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         return { label: 'Kuryer Daromadi', color: 'bg-blue-100 text-blue-800' };
       case 'PLATFORM_COMMISSION':
         return { label: 'Platforma Komissiyasi', color: 'bg-purple-100 text-purple-800' };
+      case 'REFUND_EXTERNAL':
+        return { label: 'Payme orqali kartaga qaytarish', color: 'bg-blue-100 text-blue-800' };
       case 'REFUND':
         return { label: 'Qaytarilgan Mablag\'', color: 'bg-rose-100 text-rose-800' };
       case 'WITHDRAWAL_REQUEST':

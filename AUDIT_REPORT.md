@@ -49,8 +49,9 @@ takroriy sharhlar bo‘lsa indeks yaratish xavfsiz ravishda xato beradi; skript
 ma’lumot o‘chirmaydi. Keyin README ko‘rsatmasi bilan `npm run db:push`.
 Production bazasi bu tekshiruvda o‘zgartirilmadi.
 
-Click/Payme haqiqiy integratsiyasi hali mavjud emas. Testlar mock to‘lov bilan
-bajarildi. Email provayderi va real bank o‘tkazmalari jonli tekshirilmadi.
+Payme adapteri qo‘shilgan; merchant shartnomasi va rasmiy sandbox tekshiruvisiz
+jonli to‘lov yoqilmaydi. Callback’lar lokal integratsiya testida tekshirildi.
+Click’ning jonli adapteri hali qo‘shilmagan. Email provayderi va real bank o‘tkazmalari jonli tekshirilmadi.
 Vercel’da doimiy scheduler ishlamaydi: muddatli vazifalar hozir buyurtmalar
 ro‘yxati ochilganda ham bajariladi; qat’iy jadval uchun alohida cron kerak.
 Vercel deployi bajarilmadi. Barcha ehtimoliy xatolar yo‘qligi kafolatlanmaydi.

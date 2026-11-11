@@ -24,65 +24,77 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   onSuccess,
 }) => {
   const { user, refreshUser } = useAuth();
-  if (!isOpen) return null;
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<Category>('MEVALAR');
-  const [region, setRegion] = useState(user?.region || 'Toshkent viloyati, Parkent');
+  const [region, setRegion] = useState(
+    user?.region || 'Toshkent viloyati, Parkent',
+  );
   const [price, setPrice] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('500');
   const [minOrder, setMinOrder] = useState<string>('2');
   const [imageUrl, setImageUrl] = useState<string>(
-    'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80'
+    'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
   );
   const [harvestDate, setHarvestDate] = useState<string>(
-    new Date().toISOString().slice(0, 16)
+    new Date().toISOString().slice(0, 16),
   );
 
-  const [recommendation, setRecommendation] = useState<PriceRecommendation | null>(null);
+  const [recommendation, setRecommendation] =
+    useState<PriceRecommendation | null>(null);
   const [recLoading, setRecLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Kategoriya yoki viloyat o'zgarganda real vaqtda narx tavsiyasini hisoblash
+  const [recError, setRecError] = useState('');
   useEffect(() => {
+    if (!isOpen) return;
     let active = true;
-    const fetchRec = async () => {
-      setRecLoading(true);
+    setRecommendation(null);
+    setRecError('');
+    setRecLoading(false);
+    if (title.trim().length < 2) return;
+    setRecLoading(true);
+    const timer = setTimeout(async () => {
       try {
-        const res = await api.products.getPriceRecommendation(category, region);
-        if (active) {
-          setRecommendation(res);
-          if (!price) {
-            setPrice(String(res.recommended_price));
-          }
-        }
+        const res = await api.products.getPriceRecommendation(
+          category,
+          region,
+          title,
+        );
+        if (active) setRecommendation(res);
       } catch (e) {
-        console.error('Failed to get price recommendation:', e);
+        if (active)
+          setRecError(
+            e instanceof Error ? e.message : 'Narx tavsiyasini yuklab bo‘lmadi',
+          );
       } finally {
         if (active) setRecLoading(false);
       }
-    };
-    fetchRec();
+    }, 350);
     return () => {
       active = false;
+      clearTimeout(timer);
     };
-  }, [category, region]);
+  }, [isOpen, category, region, title]);
 
   const handleApplyRecommendedPrice = () => {
-    if (recommendation) {
+    if (recommendation?.recommended_price != null)
       setPrice(String(recommendation.recommended_price));
-    }
   };
 
   const handleCategoryChange = (newCat: Category) => {
     setCategory(newCat);
     // Avtomatik mos rasm taklifi
     const defaults: Record<Category, string> = {
-      MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
-      SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
-      POLIZ: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
-      SUT_GOSHT: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
+      MEVALAR:
+        'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
+      SABZAVOTLAR:
+        'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+      POLIZ:
+        'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
+      SUT_GOSHT:
+        'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
       DON: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
     };
     setImageUrl(defaults[newCat]);
@@ -93,7 +105,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
     setError(null);
 
     if (!title || !price || !quantity) {
-      setError('Barcha majburiy maydonlarni to\'ldiring');
+      setError("Barcha majburiy maydonlarni to'ldiring");
       return;
     }
 
@@ -113,11 +125,13 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Mahsulot qo\'shishda xatolik yuz berdi');
+      setError(err.message || "Mahsulot qo'shishda xatolik yuz berdi");
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -125,7 +139,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         <div className="bg-agro-green text-white p-4 px-6 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-5 h-5 text-agro-amber" />
-            <h2 className="text-base font-bold">Yangi Agro Mahsulot Qo'shish</h2>
+            <h2 className="text-base font-bold">
+              Yangi Agro Mahsulot Qo'shish
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -160,10 +176,14 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           {/* Kategoriya va Viloyat */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Kategoriya:</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Kategoriya:
+              </label>
               <select
                 value={category}
-                onChange={(e) => handleCategoryChange(e.target.value as Category)}
+                onChange={(e) =>
+                  handleCategoryChange(e.target.value as Category)
+                }
                 className="w-full p-2.5 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none bg-white font-medium"
               >
                 <option value="MEVALAR">Mevalar</option>
@@ -175,7 +195,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Hudud (Viloyat/Tuman):</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Hudud (Viloyat/Tuman):
+              </label>
               <input
                 type="text"
                 required
@@ -195,28 +217,56 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
                 <span>Aqlli Bozor Narxi Tavsiyasi</span>
               </div>
               {recLoading ? (
-                <span className="text-[10px] text-gray-500 animate-pulse">Hisoblanmoqda...</span>
-              ) : (
+                <span className="text-[10px] text-gray-500 animate-pulse">
+                  Hisoblanmoqda...
+                </span>
+              ) : recommendation?.recommended_price != null ? (
                 <button
                   type="button"
+                  disabled={recommendation?.recommended_price == null}
                   onClick={handleApplyRecommendedPrice}
                   className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg transition-colors shadow-sm"
                 >
-                  Tavsiya narxini qo'yish ({recommendation?.recommended_price?.toLocaleString()} so'm)
+                  Tavsiya narxini qo'yish (
+                  {recommendation?.recommended_price?.toLocaleString()} so'm)
                 </button>
-              )}
+              ) : null}
             </div>
 
-            {recommendation && (
+            {recError && (
+              <p role="alert" className="text-xs text-rose-700">
+                {recError}
+              </p>
+            )}
+            {!recLoading &&
+              !recError &&
+              recommendation?.recommended_price == null && (
+                <p className="text-xs text-gray-500">
+                  {recommendation?.context ||
+                    'Mahsulot nomini kiriting. Tavsiya faqat shu mahsulot turiga qarab hisoblanadi.'}
+                </p>
+              )}
+            {recommendation?.recommended_price != null && (
               <div className="text-[11px] text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
                 <span>
-                  O'rtacha: <strong className="text-gray-900">{recommendation.avg_price.toLocaleString()} so'm/kg</strong>
+                  O'rtacha:{' '}
+                  <strong className="text-gray-900">
+                    {recommendation.avg_price?.toLocaleString()} so'm/kg
+                  </strong>
                 </span>
                 <span>
-                  Oraliq: <strong>{recommendation.min_price.toLocaleString()} - {recommendation.max_price.toLocaleString()} so'm</strong>
+                  Oraliq:{' '}
+                  <strong>
+                    {recommendation.min_price?.toLocaleString()} -{' '}
+                    {recommendation.max_price?.toLocaleString()} so'm
+                  </strong>
                 </span>
                 <span>
-                  Tahlil qamrovi: <strong>{recommendation.sample_count} ta faol lot ({recommendation.context})</strong>
+                  Tahlil qamrovi:{' '}
+                  <strong>
+                    {recommendation.sample_count} ta faol lot (
+                    {recommendation.context})
+                  </strong>
                 </span>
               </div>
             )}
@@ -225,7 +275,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           {/* Narx va Miqdorlar */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Narxi (1 kg uchun):</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Narxi (1 kg uchun):
+              </label>
               <input
                 type="number"
                 required
@@ -238,7 +290,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Ombordagi qoldiq (kg):</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Ombordagi qoldiq (kg):
+              </label>
               <input
                 type="number"
                 required
@@ -251,7 +305,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Min. buyurtma (kg):</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Min. buyurtma (kg):
+              </label>
               <input
                 type="number"
                 required
@@ -267,7 +323,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
           {/* Hosil uzilgan sana va Rasm */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Hosil uzilgan vaqt:</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Hosil uzilgan vaqt:
+              </label>
               <input
                 type="datetime-local"
                 value={harvestDate}
@@ -277,7 +335,9 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-gray-700 mb-1">Rasm havolasi (URL):</label>
+              <label className="block font-bold text-gray-700 mb-1">
+                Rasm havolasi (URL):
+              </label>
               <input
                 type="text"
                 value={imageUrl}

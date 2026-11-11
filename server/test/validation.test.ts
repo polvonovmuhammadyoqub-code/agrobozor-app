@@ -12,3 +12,13 @@ test('numeric inputs reject junk, coercions, fractions for money and database ov
   assert.equal(positiveInt('15000'), 15000);
   assert.equal(positiveNumber('0.25'), 0.25);
 });
+
+test('commodity matching supports Uzbek suffixes without mixing processing or ambiguous products', async () => {
+  const { productKind } = await import('../src/utils/product-kind.js');
+  assert.equal(productKind('Parkent uzumi'),productKind('Uzum'));
+  assert.equal(productKind('Qizil olmalar'),productKind('Olma'));
+  assert.notEqual(productKind('Olma'),productKind('Uzum'));
+  assert.notEqual(productKind('Quritilgan olma'),productKind('Olma'));
+  assert.notEqual(productKind('Olma sharbati'),productKind('Olma'));
+  assert.notEqual(productKind('Olma va uzum'),productKind('Olma'));
+});

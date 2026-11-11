@@ -47,6 +47,9 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (user) sessionStorage.removeItem('agro_pending_product');
   }, [user?.id]);
+  useEffect(() => {
+    if(user && ['BUYER_B2C','BUYER_B2B'].includes(user.role) && new URLSearchParams(window.location.search).has('payment_return')) setCurrentTab('orders');
+  }, [user?.id]);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modal holatlari

@@ -106,3 +106,56 @@ test('courier signs in directly to available deliveries', async ({ page }) => {
   await expect(page.getByText('Chilonzor', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('Payme cart checkout remains unpaid and offers a provider link', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('agro_token', 'test-token'));
+  await page.route('**/api/auth/me', route => route.fulfill({json:user}));
+  await page.route('**/api/products?*', route => route.fulfill({json:[product]}));
+  await page.route('**/api/payments/options', route => route.fulfill({json:{mode:'payme',methods:['PAYME'],message:'To‘lov Payme sahifasida tasdiqlanadi.'}}));
+  const pending={id:'pending-payme',status:'PENDING_PAYMENT',product_title:'Test olma',total_paid:25000};
+  await page.route('**/api/orders/checkout', async route => {expect(route.request().postDataJSON().payment_method).toBe('PAYME');await route.fulfill({status:201,json:{orders:[pending],grand_total:25000,total_orders_count:1}});});
+  await page.route('**/api/orders/pending-payme/pay', route => route.fulfill({json:{order:pending,pending_payment:true,checkout_url:'https://test.paycom.uz/fixture'}}));
+  await page.goto('/');
+  await page.getByTitle("Savatga qo'shish").click();
+  await page.getByTitle('Savat',{exact:true}).click();
+  await page.getByRole('button',{name:'Buyurtmani Rasmiylashtirish'}).click();
+  await expect(page.getByRole('radio',{name:'PAYME',exact:true})).toBeChecked();
+  await page.getByRole('button',{name:'Buyurtmani Tasdiqlash'}).click();
+  await expect(page.getByRole('status')).toContainText('to‘lov kutmoqda');
+  await expect(page.getByRole('link',{name:/Payme orqali to‘lash/})).toHaveAttribute('href','https://test.paycom.uz/fixture');
+  await expect(page.getByText('Barcha buyurtmalar to‘lovi tasdiqlandi.')).toHaveCount(0);
+});
+
+test('unconfigured payment is clearly unavailable and does not create an order', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('agro_token', 'test-token'));
+  await page.route('**/api/auth/me', route => route.fulfill({json:user}));
+  await page.route('**/api/products?*', route => route.fulfill({json:[product]}));
+  await page.route('**/api/payments/options', route => route.fulfill({json:{mode:'disabled',methods:[],message:'Onlayn to‘lov hali ulanmagan.'}}));
+  await page.goto('/');
+  await page.getByRole('button',{name:'Sotib olish',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('Onlayn to‘lov hali ulanmagan.');
+  await expect(page.getByRole('button',{name:'Buyurtmani rasmiylashtirish',exact:true})).toBeDisabled();
+});
+
+test('add product opens repeatedly, preserves manual price and immediately refreshes farmer inventory', async ({ page }) => {
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const farmer={...user,id:'farmer',role:'FARMER',full_name:'Test Farmer',kyc_status:'APPROVED'};
+  let inventory:unknown[]=[];
+  await page.addInitScript(()=>localStorage.setItem('agro_token','farmer-token'));
+  await page.route('**/api/auth/me',route=>route.fulfill({json:farmer}));
+  await page.route('**/api/orders',route=>route.fulfill({json:[]}));
+  await page.route('**/api/products/mine/list',route=>route.fulfill({json:inventory}));
+  await page.route('**/api/price-recommendation?*',route=>route.fulfill({json:{recommended_price:24000,avg_price:24000,min_price:24000,max_price:24000,sample_count:1,source:'matched_product',context:'Shu mahsulot turi'}}));
+  await page.route('**/api/products',async route=>{const body=route.request().postDataJSON();const p={...product,...body,id:'new-product',_count:{views:0,orders:0}};inventory=[p];await route.fulfill({status:201,json:p});});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Mahsulot qo‘shish',exact:true}).first().click();
+  await page.getByPlaceholder('so\'m',{exact:true}).fill('17000');
+  await page.getByPlaceholder(/Masalan: Parkent/).fill('Qizil olma');
+  await expect(page.getByText(/Tavsiya narxini qo.yish/)).toBeVisible();
+  await expect(page.getByPlaceholder('so\'m',{exact:true})).toHaveValue('17000');
+  await page.getByRole('button',{name:'Bekor qilish',exact:true}).click();
+  await page.getByRole('button',{name:'Mahsulot qo‘shish',exact:true}).first().click();
+  await page.getByRole('button',{name:'Sotuvga chiqarish',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Qizil olma',exact:true})).toBeVisible();
+  expect(errors).toEqual([]);
+});

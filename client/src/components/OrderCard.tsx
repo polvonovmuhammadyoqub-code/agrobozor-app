@@ -37,25 +37,55 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
       case 'PENDING_PAYMENT':
-        return { label: 'To\'lov kutilmoqda', color: 'bg-orange-100 text-orange-800 border-orange-300' };
+        return {
+          label: "To'lov kutilmoqda",
+          color: 'bg-orange-100 text-orange-800 border-orange-300',
+        };
       case 'CANCELLED':
-        return { label: 'Bekor qilindi', color: 'bg-gray-100 text-gray-600 border-gray-300' };
+        return {
+          label: 'Bekor qilindi',
+          color: 'bg-gray-100 text-gray-600 border-gray-300',
+        };
       case 'PAID_IN_ESCROW':
-        return { label: 'To\'lov Escrowda Muzlatilgan', color: 'bg-amber-100 text-amber-800 border-amber-300' };
+        return {
+          label: "To'lov Escrowda Muzlatilgan",
+          color: 'bg-amber-100 text-amber-800 border-amber-300',
+        };
       case 'CONFIRMED_BY_FARMER':
-        return { label: 'Fermer Tasdiqladi', color: 'bg-blue-100 text-blue-800 border-blue-300' };
+        return {
+          label: 'Fermer Tasdiqladi',
+          color: 'bg-blue-100 text-blue-800 border-blue-300',
+        };
       case 'IN_TRANSIT':
-        return { label: 'Kuryer Yo\'lda', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' };
+        return {
+          label: "Kuryer Yo'lda",
+          color: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+        };
       case 'DELIVERED':
-        return { label: 'Yetkazib Berildi', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+        return {
+          label: 'Yetkazib Berildi',
+          color: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        };
       case 'COMPLETED':
-        return { label: 'Muvaffaqiyatli Yakunlandi', color: 'bg-emerald-700 text-white border-transparent' };
+        return {
+          label: 'Muvaffaqiyatli Yakunlandi',
+          color: 'bg-emerald-700 text-white border-transparent',
+        };
       case 'DISPUTED':
-        return { label: 'Nizo Ochilgan (Ko\'rib chiqilmoqda)', color: 'bg-rose-100 text-rose-800 border-rose-300' };
+        return {
+          label: "Nizo Ochilgan (Ko'rib chiqilmoqda)",
+          color: 'bg-rose-100 text-rose-800 border-rose-300',
+        };
       case 'REFUNDED':
-        return { label: 'Mablag\' Qaytarildi', color: 'bg-gray-100 text-gray-800 border-gray-300' };
+        return {
+          label: "Mablag' Qaytarildi",
+          color: 'bg-gray-100 text-gray-800 border-gray-300',
+        };
       default:
-        return { label: status, color: 'bg-gray-100 text-gray-800 border-gray-300' };
+        return {
+          label: status,
+          color: 'bg-gray-100 text-gray-800 border-gray-300',
+        };
     }
   };
 
@@ -63,9 +93,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   // Stepper holatlari
   const steps: { key: OrderStatus; label: string }[] = [
-    { key: 'PAID_IN_ESCROW', label: 'To\'lov (Escrow)' },
+    { key: 'PAID_IN_ESCROW', label: "To'lov (Escrow)" },
     { key: 'CONFIRMED_BY_FARMER', label: 'Fermer tayyorladi' },
-    { key: 'IN_TRANSIT', label: 'Kuryer yo\'lda' },
+    { key: 'IN_TRANSIT', label: "Kuryer yo'lda" },
     { key: 'DELIVERED', label: 'Yetkazildi' },
     { key: 'COMPLETED', label: 'Yakunlandi' },
   ];
@@ -78,9 +108,35 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   const currentStepIdx = getStepIndex(order.status);
 
+  const [paymentError, setPaymentError] = useState('');
+  const handlePay = async () => {
+    setLoadingAction('pay');
+    setPaymentError('');
+    try {
+      const result = await api.orders.pay(order.id);
+      if (result.pending_payment && result.checkout_url) {
+        window.location.assign(result.checkout_url);
+        return;
+      }
+      if (result.pending_invoice) onOpenInvoice(order.id);
+      await refreshUser();
+      onRefresh();
+    } catch (e) {
+      setPaymentError(
+        e instanceof Error ? e.message : 'To‘lovni bajarib bo‘lmadi',
+      );
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   // Xaridor buyurtmani yakunlashi (Escrow pulini yechish)
   const handleCompleteOrder = async () => {
-    if (!confirm('Mahsulotni to\'liq qabul qildingizmi? Tasdiqlasangiz, mablag\' fermer va kuryer hisobiga o\'tkaziladi.')) {
+    if (
+      !confirm(
+        "Mahsulotni to'liq qabul qildingizmi? Tasdiqlasangiz, mablag' fermer va kuryer hisobiga o'tkaziladi.",
+      )
+    ) {
       return;
     }
     setLoadingAction('complete');
@@ -113,7 +169,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   // Fermer buyurtmani rad etadi (xaridorga to'liq qaytariladi)
   const handleFarmerReject = async () => {
-    if (!confirm("Buyurtmani rad etasizmi? Mablag' xaridorga to'liq qaytariladi.")) return;
+    if (
+      !confirm("Buyurtmani rad etasizmi? Mablag' xaridorga to'liq qaytariladi.")
+    )
+      return;
     setLoadingAction('reject');
     try {
       await api.orders.reject(order.id);
@@ -190,7 +249,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
-          <span className={`text-xs px-3 py-1 rounded-full border font-bold ${statusBadge.color}`}>
+          <span
+            className={`text-xs px-3 py-1 rounded-full border font-bold ${statusBadge.color}`}
+          >
             {statusBadge.label}
           </span>
           <button
@@ -217,7 +278,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             const isCompleted = idx <= currentStepIdx;
             const isCurrent = idx === currentStepIdx;
             return (
-              <div key={step.key} className="relative z-10 flex flex-col items-center">
+              <div
+                key={step.key}
+                className="relative z-10 flex flex-col items-center"
+              >
                 <div
                   className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                     isCompleted
@@ -249,12 +313,20 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             className="w-16 h-16 rounded-2xl object-cover border border-gray-200"
           />
           <div>
-            <h4 className="font-bold text-gray-900 text-sm">{order.product?.title}</h4>
+            <h4 className="font-bold text-gray-900 text-sm">
+              {order.product?.title}
+            </h4>
             <div className="text-xs text-gray-500 mt-0.5">
-              Fermer: <strong className="text-gray-700">{order.farmer?.farm_or_company_name || order.farmer?.full_name}</strong> ({order.farmer?.region})
+              Fermer:{' '}
+              <strong className="text-gray-700">
+                {order.farmer?.farm_or_company_name || order.farmer?.full_name}
+              </strong>{' '}
+              ({order.farmer?.region})
             </div>
             <div className="text-xs text-gray-600 mt-1">
-              Miqdor: <strong className="text-gray-900">{order.quantity_kg} kg</strong> × {order.product?.price_per_kg?.toLocaleString()} so'm
+              Miqdor:{' '}
+              <strong className="text-gray-900">{order.quantity_kg} kg</strong>{' '}
+              × {order.product?.price_per_kg?.toLocaleString()} so'm
             </div>
           </div>
         </div>
@@ -265,7 +337,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             {order.total_paid.toLocaleString()} so'm
           </div>
           <div className="text-[11px] text-gray-400">
-            (Mahsulot: {order.product_total_amount.toLocaleString()} + Yetkazish: {order.delivery_fee.toLocaleString()})
+            (Mahsulot: {order.product_total_amount.toLocaleString()} +
+            Yetkazish: {order.delivery_fee.toLocaleString()})
           </div>
         </div>
       </div>
@@ -275,7 +348,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         <div className="flex items-start space-x-2 bg-gray-50 p-3 rounded-xl">
           <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
           <div>
-            <div className="font-semibold text-gray-800">Yetkazish manzili:</div>
+            <div className="font-semibold text-gray-800">
+              Yetkazish manzili:
+            </div>
             <div>{order.delivery_address}</div>
           </div>
         </div>
@@ -283,12 +358,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         <div className="flex items-start space-x-2 bg-gray-50 p-3 rounded-xl">
           <Truck className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
           <div>
-            <div className="font-semibold text-gray-800">Yetkazib beruvchi kuryer:</div>
+            <div className="font-semibold text-gray-800">
+              Yetkazib beruvchi kuryer:
+            </div>
             <div>
               {order.courier ? (
-                <span>{order.courier.full_name} ({order.courier.phone})</span>
+                <span>
+                  {order.courier.full_name} ({order.courier.phone})
+                </span>
               ) : (
-                <span className="text-amber-600 font-medium">Tayinlanmagan (kutilmoqda)</span>
+                <span className="text-amber-600 font-medium">
+                  Tayinlanmagan (kutilmoqda)
+                </span>
               )}
             </div>
           </div>
@@ -298,7 +379,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           <div className="sm:col-span-2 flex items-start space-x-2 bg-purple-50 p-3 rounded-xl text-purple-900 border border-purple-100">
             <Calendar className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">B2B Rejali Jadval:</span> {order.delivery_schedule}
+              <span className="font-bold">B2B Rejali Jadval:</span>{' '}
+              {order.delivery_schedule}
             </div>
           </div>
         )}
@@ -326,7 +408,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
         <div className="flex items-center space-x-2">
           {/* Escrow kafolat eslatmasi */}
-          {!['COMPLETED', 'REFUNDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(order.status) && (
+          {!['COMPLETED', 'REFUNDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(
+            order.status,
+          ) && (
             <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>Escrowda himoyalangan</span>
@@ -335,6 +419,22 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {paymentError && (
+            <p role="alert" className="text-rose-700 text-xs w-full">
+              {paymentError}
+            </p>
+          )}
+          {isBuyer &&
+            order.status === 'PENDING_PAYMENT' &&
+            order.payment_method !== 'INVOICE_B2B' && (
+              <button
+                onClick={handlePay}
+                disabled={!!loadingAction}
+                className="bg-agro-green text-white text-xs font-bold px-4 py-2 rounded-xl disabled:opacity-40"
+              >
+                {loadingAction === 'pay' ? 'Kutilmoqda…' : 'To‘lash'}
+              </button>
+            )}
           {isBuyer && order.status === 'PENDING_PAYMENT' && (
             <button
               onClick={handleCancelUnpaid}
@@ -360,7 +460,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               disabled={loadingAction === 'confirm'}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm disabled:opacity-50"
             >
-              {loadingAction === 'confirm' ? 'Tasdiqlanmoqda...' : 'Buyurtmani Tasdiqlash'}
+              {loadingAction === 'confirm'
+                ? 'Tasdiqlanmoqda...'
+                : 'Buyurtmani Tasdiqlash'}
             </button>
           )}
 
@@ -371,7 +473,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               disabled={loadingAction === 'pickup'}
               className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm disabled:opacity-50"
             >
-              {loadingAction === 'pickup' ? 'Qabul qilinmoqda...' : 'Yetkazib berishga olish (12 000 so\'m)'}
+              {loadingAction === 'pickup'
+                ? 'Qabul qilinmoqda...'
+                : "Yetkazib berishga olish (12 000 so'm)"}
             </button>
           )}
 
@@ -382,13 +486,17 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               disabled={loadingAction === 'deliver'}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm disabled:opacity-50"
             >
-              {loadingAction === 'deliver' ? 'Belgilanmoqda...' : 'Mijozga Yetkazdim'}
+              {loadingAction === 'deliver'
+                ? 'Belgilanmoqda...'
+                : 'Mijozga Yetkazdim'}
             </button>
           )}
 
           {/* Xaridor Harakatlari: Qabul qildim yoki Shikoyat */}
           {isBuyer &&
-            (order.status === 'DELIVERED' || order.status === 'IN_TRANSIT' || order.status === 'CONFIRMED_BY_FARMER') && (
+            (order.status === 'DELIVERED' ||
+              order.status === 'IN_TRANSIT' ||
+              order.status === 'CONFIRMED_BY_FARMER') && (
               <>
                 <button
                   onClick={() => onOpenDispute(order)}
@@ -405,22 +513,24 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                   <span>
                     {loadingAction === 'complete'
                       ? 'Pul yechilmoqda...'
-                      : 'Qabul qildim, e\'tirozim yo\'q'}
+                      : "Qabul qildim, e'tirozim yo'q"}
                   </span>
                 </button>
               </>
             )}
 
           {/* Sharh qoldirish (Yakunlangan buyurtmalar uchun) */}
-          {isBuyer && order.status === 'COMPLETED' && (!order.reviews || order.reviews.length === 0) && (
-            <button
-              onClick={() => onOpenReview(order)}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-3.5 py-2 rounded-xl transition-colors flex items-center space-x-1"
-            >
-              <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
-              <span>Fermerga baho berish</span>
-            </button>
-          )}
+          {isBuyer &&
+            order.status === 'COMPLETED' &&
+            (!order.reviews || order.reviews.length === 0) && (
+              <button
+                onClick={() => onOpenReview(order)}
+                className="bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-3.5 py-2 rounded-xl transition-colors flex items-center space-x-1"
+              >
+                <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                <span>Fermerga baho berish</span>
+              </button>
+            )}
         </div>
       </div>
     </div>

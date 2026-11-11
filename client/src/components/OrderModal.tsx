@@ -1,333 +1,227 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Product, PaymentMethod } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import {
-  X,
-  ShieldCheck,
-  CheckCircle2,
-  AlertCircle,
-  Truck,
-  CreditCard,
-  Building2,
-  Calendar,
-} from 'lucide-react';
-
-interface OrderModalProps {
-  product: Product | null;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-export const OrderModal: React.FC<OrderModalProps> = ({
+import { ModalFrame } from './ModalFrame';
+import { PaymentSelector, usePaymentOptions } from './PaymentSelector';
+export function OrderModal({
   product,
   onClose,
   onSuccess,
-}) => {
+}: {
+  product: Product | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { user, refreshUser } = useAuth();
-
-  const [quantity, setQuantity] = useState<number>(product?.min_order_kg || 1);
-  const [address, setAddress] = useState<string>(user?.region ? `${user.region}, Markaziy ko'cha 1` : '');
-  const [schedule, setSchedule] = useState<string>(
-    user?.role === 'BUYER_B2B' ? 'Har dushanba va payshanba soat 09:00 gacha' : ''
+  const options = usePaymentOptions(!!product, user?.role === 'BUYER_B2B');
+  const [quantity, setQuantity] = useState(product?.min_order_kg || 1);
+  const [address, setAddress] = useState(user?.region || '');
+  const [schedule, setSchedule] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>(
+    user?.role === 'BUYER_B2B' ? 'INVOICE_B2B' : 'CLICK',
   );
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    user?.role === 'BUYER_B2B' ? 'INVOICE_B2B' : 'CLICK'
-  );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Mahsulot o'zgarganda formani va xatolik/muvaffaqiyat holatlarini to'liq qayta o'rnatish
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [receipt, setReceipt] = useState<{
+    message: string;
+    url?: string;
+    paid: boolean;
+  } | null>(null);
   useEffect(() => {
-    if (product) {
-      setQuantity(product.min_order_kg || 1);
-      setError(null);
-      setSuccessMessage(null);
-      setLoading(false);
-      setPaymentMethod(user?.role === 'BUYER_B2B' ? 'INVOICE_B2B' : 'CLICK');
-      if (user?.region && !address) {
-        setAddress(`${user.region}, Markaziy ko'cha 1`);
-      }
-    }
+    setReceipt(null);
+    setError('');
+    setQuantity(product?.min_order_kg || 1);
   }, [product?.id]);
-
-  if (!product) return null; // hook'lardan KEYIN (React qoidasi)
-
-  const productTotal = Math.round(quantity * product.price_per_kg);
-  const deliveryFee = 15000;
-  const grandTotal = productTotal + deliveryFee;
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!options.loading)
+      setMethod((old) =>
+        options.methods.includes(old) ? old : options.methods[0] || 'CLICK',
+      );
+  }, [options.loading, options.mode, options.methods.join(',')]);
+  if (!product) return null;
+  const total = Math.round(quantity * product.price_per_kg) + 15000;
+  const finish = () => {
+    onSuccess();
+    onClose();
+  };
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
-    if (quantity < product.min_order_kg) {
-      setError(`Minimal buyurtma miqdori: ${product.min_order_kg} kg`);
-      return;
-    }
-
-    if (quantity > product.available_quantity_kg) {
-      setError(`Omborda yetarli mahsulot yo'q. Mavjud: ${product.available_quantity_kg} kg`);
-      return;
-    }
-
-    if (!address.trim()) {
-      setError('Iltimos, yetkazib berish manzilini kiriting');
-      return;
-    }
-
-    setLoading(true);
+    if (busy || receipt) return;
+    setBusy(true);
+    setError('');
     try {
-      const created = await api.orders.create({
+      if (
+        !Number.isFinite(quantity) ||
+        quantity < product.min_order_kg ||
+        quantity > product.available_quantity_kg
+      )
+        throw new Error('Miqdorni mavjud qoldiq chegarasida kiriting');
+      const order = await api.orders.create({
         product_id: product.id,
         quantity_kg: quantity,
-        payment_method: paymentMethod,
+        payment_method: method,
         delivery_address: address,
         delivery_schedule: schedule || undefined,
       });
-
-      // 2-qadam: to'lov. Muvaffaqiyatsiz bo'lsa buyurtma bekor qilinadi va ombor qoldig'i qaytadi.
-      let paid;
       try {
-        paid = await api.orders.pay(created.id, paymentMethod);
-      } catch (payErr) {
-        await api.orders.cancel(created.id).catch(() => {});
-        throw payErr;
+        const result = await api.orders.pay(order.id);
+        if (result.pending_payment)
+          setReceipt({
+            message:
+              'Buyurtma yaratildi. To‘lov hali tasdiqlanmagan. Payme sahifasida yakunlang.',
+            url: result.checkout_url,
+            paid: false,
+          });
+        else if (result.pending_invoice)
+          setReceipt({
+            message:
+              'Hisob-faktura yaratildi. Bank o‘tkazmasi tasdiqlanishi kutilmoqda.',
+            paid: false,
+          });
+        else if (result.order.status === 'PAID_IN_ESCROW') {
+          setReceipt({
+            message: result.is_demo
+              ? 'Sinov to‘lovi bajarildi. Haqiqiy pul yechilmadi.'
+              : 'To‘lov tasdiqlandi.',
+            paid: true,
+          });
+          await refreshUser();
+        } else
+          setReceipt({
+            message:
+              'Buyurtma yaratildi. To‘lov hali tasdiqlanmadi; Buyurtmalar bo‘limida holatini tekshiring.',
+            paid: false,
+          });
+      } catch (e) {
+        setReceipt({
+          message:
+            'Buyurtma yaratildi, lekin to‘lov tasdiqlanmadi. Buyurtmalar sahifasida holatni tekshirib, qayta to‘lang.',
+          paid: false,
+        });
+        setError(e instanceof Error ? e.message : 'To‘lov xatosi');
       }
-
-      setSuccessMessage(
-        paid.pending_invoice
-          ? "Hisob-faktura shakllandi. Bank o'tkazmasi tasdiqlangach buyurtma faollashadi."
-          : "To'lov qabul qilindi! Mablag' Escrow hisobida xavfsiz saqlanmoqda."
-      );
-      await refreshUser();
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 1500);
-    } catch (err: any) {
-      setError(err.message || 'Buyurtma berishda xatolik yuz berdi');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Buyurtma yaratishda xatolik');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="relative bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Modal Tepasi */}
-        <div className="bg-agro-green text-white p-5 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
-              <ShieldCheck className="w-6 h-6 text-agro-amber" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Xavfsiz Escrow Buyurtma</h2>
-              <p className="text-xs text-emerald-100">Kafolatlangan yetkazib berish xizmati</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+    <ModalFrame title="Buyurtma berish" onClose={onClose}>
+      <div className="flex items-center gap-3">
+        <img
+          src={product.image_url}
+          alt=""
+          className="w-16 h-16 rounded-xl object-cover"
+        />
+        <div>
+          <h3 className="font-bold">{product.title}</h3>
+          <p className="text-sm text-emerald-800">
+            {product.price_per_kg.toLocaleString()} so‘m / kg
+          </p>
+        </div>
+      </div>
+      {error && (
+        <p
+          role="alert"
+          className="text-rose-700 bg-rose-50 p-3 rounded-xl text-sm"
+        >
+          {error}
+        </p>
+      )}
+      {receipt ? (
+        <div className="space-y-4">
+          <p
+            role="status"
+            className={`p-4 rounded-xl text-sm ${receipt.paid ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}
           >
-            <X className="w-5 h-5" />
+            {receipt.message}
+          </p>
+          {receipt.url && (
+            <a
+              href={receipt.url}
+              className="block text-center p-4 rounded-xl bg-agro-green text-white font-bold"
+            >
+              Payme orqali to‘lash
+            </a>
+          )}
+          <button
+            onClick={finish}
+            className="w-full p-3 border rounded-xl font-bold"
+          >
+            Buyurtmalarni ko‘rish
           </button>
         </div>
-
-        {/* Modal Tanasi */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {successMessage && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          {/* Mahsulot ma'lumoti qisqacha */}
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-2xl border border-gray-100">
-            <img
-              src={product.image_url}
-              alt={product.title}
-              className="w-16 h-16 rounded-xl object-cover"
-            />
-            <div className="flex-1">
-              <h4 className="font-bold text-gray-900 text-sm">{product.title}</h4>
-              <div className="text-xs text-gray-500">
-                Fermer: {product.farmer?.farm_or_company_name || product.farmer?.full_name} ({product.region})
-              </div>
-              <div className="text-xs font-bold text-agro-green mt-0.5">
-                {product.price_per_kg.toLocaleString()} so'm / kg
-              </div>
-            </div>
-          </div>
-
-          {/* Miqdor tanlash */}
-          <div>
-            <div className="flex justify-between items-center mb-1 text-xs">
-              <label className="font-bold text-gray-700">Miqdor (kg):</label>
-              <span className="text-gray-500">
-                Mavjud qoldiq: <strong>{product.available_quantity_kg} kg</strong> (Min: {product.min_order_kg} kg)
-              </span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => Math.max(product.min_order_kg, q - 1))}
-                className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 font-bold text-lg flex items-center justify-center text-gray-700 transition-colors"
-              >
-                -
-              </button>
-              <input
-                type="number"
-                min={product.min_order_kg}
-                step="any"
-                max={product.available_quantity_kg}
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                className="flex-1 text-center font-extrabold text-base py-2 bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setQuantity((q) => Math.min(product.available_quantity_kg, q + 1))}
-                className="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 font-bold text-lg flex items-center justify-center text-gray-700 transition-colors"
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Yetkazib berish manzili */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              Yetkazib berish manzili:
-            </label>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          <label className="block text-sm">
+            Miqdor (kg)
             <input
-              type="text"
+              type="number"
+              step="any"
+              min={product.min_order_kg}
+              max={product.available_quantity_kg}
               required
+              value={quantity}
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              className="block mt-2 w-full p-3 border rounded-xl"
+            />
+          </label>
+          <label className="block text-sm">
+            Yetkazib berish manzili
+            <input
+              required
+              minLength={5}
+              maxLength={300}
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="Shahar/tuman, ko'cha, uy raqami..."
-              className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none focus:ring-1 focus:ring-agro-green"
+              placeholder="Tuman, ko‘cha, uy raqami"
+              className="block mt-2 w-full p-3 border rounded-xl"
             />
-          </div>
-
-          {/* B2B Yetkazib berish jadvali (Doimiy jadval) */}
-          {(user?.role === 'BUYER_B2B' || schedule) && (
-            <div>
-              <label className="flex items-center space-x-1.5 text-xs font-bold text-purple-900 mb-1">
-                <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                <span>B2B Yetkazib berish jadvali (ixtiyoriy):</span>
-              </label>
+          </label>
+          {user?.role === 'BUYER_B2B' && (
+            <label className="block text-sm">
+              Yetkazib berish jadvali
               <input
-                type="text"
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
-                placeholder="Masalan: Har dushanba va payshanba soat 08:00 gacha"
-                className="w-full text-xs px-3.5 py-2 rounded-xl border border-purple-200 bg-purple-50/50 focus:border-purple-600 focus:outline-none"
+                className="block w-full mt-2 p-3 border rounded-xl"
               />
-            </div>
+            </label>
           )}
-
-          {/* To'lov usuli tanlash */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-gray-700">
-                To'lov tizimi:
-              </label>
-              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
-                Online to'lov test/demo rejimida
-              </span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {[
-                { id: 'CLICK', name: 'Click Up', badge: 'Demo' },
-                { id: 'PAYME', name: 'Payme', badge: 'Demo' },
-                { id: 'UZCARD', name: 'Uzcard', badge: 'Demo' },
-                { id: 'HUMO', name: 'Humo', badge: 'Demo' },
-                { id: 'INVOICE_B2B', name: 'B2B Invoice', badge: 'Bank' },
-              ].filter((m) => m.id !== 'INVOICE_B2B' || user?.role === 'BUYER_B2B').map((m) => (
-                <button
-                  type="button"
-                  key={m.id}
-                  onClick={() => setPaymentMethod(m.id as PaymentMethod)}
-                  className={`p-2.5 rounded-xl border text-left text-xs font-semibold flex items-center justify-between transition-all ${
-                    paymentMethod === m.id
-                      ? 'border-agro-green bg-agro-paleGreen text-agro-dark shadow-sm ring-1 ring-agro-green'
-                      : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                  }`}
-                >
-                  <div className="flex items-center space-x-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-agro-green" />
-                    <span>{m.name}</span>
-                  </div>
-                  <span className="text-[10px] text-gray-400 font-normal">{m.badge}</span>
-                </button>
-              ))}
-            </div>
+          <PaymentSelector
+            options={options}
+            value={method}
+            onChange={setMethod}
+          />
+          <div className="bg-gray-50 p-4 rounded-xl text-sm space-y-2">
+            <p className="flex justify-between">
+              <span>Mahsulot</span>
+              <strong>
+                {Math.round(quantity * product.price_per_kg).toLocaleString()}{' '}
+                so‘m
+              </strong>
+            </p>
+            <p className="flex justify-between">
+              <span>Yetkazish</span>
+              <strong>15 000 so‘m</strong>
+            </p>
+            <p className="flex justify-between border-t pt-2">
+              <span>Jami</span>
+              <strong>{total.toLocaleString()} so‘m</strong>
+            </p>
           </div>
-
-          {/* Moliya hisob-kitobi va Escrow kafolati */}
-          <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200/80 space-y-2 text-xs">
-            <div className="flex justify-between text-gray-600">
-              <span>Mahsulot ({quantity} kg × {product.price_per_kg.toLocaleString()} so'm):</span>
-              <strong className="text-gray-900">{productTotal.toLocaleString()} so'm</strong>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span className="flex items-center space-x-1">
-                <Truck className="w-3.5 h-3.5 text-gray-500" />
-                <span>Standart logistika yetkazish:</span>
-              </span>
-              <strong className="text-gray-900">{deliveryFee.toLocaleString()} so'm</strong>
-            </div>
-            <div className="pt-2 border-t border-gray-200 flex justify-between items-center text-sm">
-              <span className="font-extrabold text-gray-900">Jami to'lov:</span>
-              <span className="text-lg font-black text-agro-green">
-                {grandTotal.toLocaleString()} so'm
-              </span>
-            </div>
-
-            <div className="pt-2 text-[11px] text-emerald-800 bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/60 flex items-start space-x-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>100% Escrow Kafolati:</strong> To'lovingiz platformamizda muzlatiladi. Kuryer mahsulotni yetkazib berib, siz "Qabul qildim" deb tasdiqlaganingizdagina fermerga o'tkaziladi.
-              </span>
-            </div>
-          </div>
-
-          {/* Tasdiqlash tugmasi */}
-          <div className="flex justify-end space-x-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Bekor qilish
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !!successMessage}
-              className="flex-1 bg-agro-green hover:bg-agro-lightGreen text-white px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-md shadow-emerald-900/15 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
-            >
-              {loading ? (
-                <span>Rasmiylashtirilmoqda...</span>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4 text-agro-amber" />
-                  <span>To'lash va Escrowga qo'yish ({grandTotal.toLocaleString()} so'm)</span>
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            disabled={
+              busy || options.loading || !options.methods.includes(method)
+            }
+            className="w-full bg-agro-green text-white p-4 rounded-xl font-bold disabled:opacity-40"
+          >
+            {busy ? 'Rasmiylashtirilmoqda…' : 'Buyurtmani rasmiylashtirish'}
+          </button>
         </form>
-      </div>
-    </div>
+      )}
+    </ModalFrame>
   );
-};
+}

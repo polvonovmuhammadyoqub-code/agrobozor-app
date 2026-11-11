@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { DELIVERY_FEE, COURIER_PAYOUT, LOGISTICS_MARGIN, COMMISSION_RATE, PAYMENT_TIMEOUT_MIN, INVOICE_TIMEOUT_HOURS, DISPUTE_WINDOW_HOURS, } from '../config.js';
+import { paymeCheckout, paymentMode, paymentOptions } from '../services/payment-options.js';
 import { chargeOrder } from '../services/payment.js';
 import { holdInEscrow, settleOrder } from '../services/settlement.js';
 import { cleanText, maskId, positiveNumber } from '../utils/validate.js';
@@ -45,6 +46,7 @@ export async function releaseExpiredOrders() {
         const stale = await prisma.order.findMany({
             where: {
                 status: 'PENDING_PAYMENT',
+                NOT: { payme_transaction: { is: { state: 1, expires_at: { gt: new Date() } } } },
                 OR: [
                     { payment_method: { not: 'INVOICE_B2B' }, created_at: { lt: new Date(now - PAYMENT_TIMEOUT_MIN * 60000) } },
                     { payment_method: 'INVOICE_B2B', created_at: { lt: new Date(now - INVOICE_TIMEOUT_HOURS * 3600000) } },
@@ -54,8 +56,9 @@ export async function releaseExpiredOrders() {
         });
         for (const o of stale) {
             await prisma.$transaction(async (tx) => {
-                const r = await tx.order.updateMany({ where: { id: o.id, status: 'PENDING_PAYMENT' }, data: { status: 'CANCELLED' } });
+                const r = await tx.order.updateMany({ where: { id: o.id, status: 'PENDING_PAYMENT', NOT: { payme_transaction: { is: { state: 1, expires_at: { gt: new Date() } } } } }, data: { status: 'CANCELLED' } });
                 if (r.count === 1) {
+                    await tx.paymeTransaction.updateMany({ where: { order_id: o.id, state: 1 }, data: { state: -1, reason: 4, cancel_time: new Date() } });
                     await tx.product.update({ where: { id: o.product_id }, data: { available_quantity_kg: { increment: o.quantity_kg } } });
                 }
             });
@@ -135,6 +138,9 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
         if (payment_method === 'INVOICE_B2B' && req.user.role !== 'BUYER_B2B') {
             return res.status(400).json({ error: 'Hisob-faktura orqali to‘lov faqat biznes hisoblar uchun' });
         }
+        if (payment_method !== 'INVOICE_B2B' && !paymentOptions().methods.length) {
+            return res.status(503).json({ error: 'Onlayn to‘lov hali ulanmagan. Buyurtma yaratilmadi.' });
+        }
         const product = await prisma.product.findUnique({ where: { id: String(product_id) }, include: { farmer: true } });
         if (!product || !product.is_active) {
             return res.status(404).json({ error: 'Mahsulot topilmadi yoki sotuvda mavjud emas' });
@@ -207,6 +213,9 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
         const payMethod = METHODS.includes(payment_method) ? payment_method : 'CLICK';
         if (payMethod === 'INVOICE_B2B' && req.user.role !== 'BUYER_B2B') {
             return res.status(400).json({ error: 'Hisob-faktura orqali to‘lov faqat biznes hisoblar uchun' });
+        }
+        if (payMethod !== 'INVOICE_B2B' && !paymentOptions().methods.length) {
+            return res.status(503).json({ error: 'Onlayn to‘lov hali ulanmagan. Buyurtma yaratilmadi.' });
         }
         // Har bir mahsulotni tekshirish
         const itemRequests = items.map((it) => ({
@@ -318,7 +327,7 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
 // 4. To'lov: muvaffaqiyatli bo'lsa pul ESCROW'ga tushadi (PAID_IN_ESCROW)
 router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req, res) => {
     try {
-        const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+        const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { payme_transaction: true } });
         if (!order || order.buyer_id !== req.user.id)
             return res.status(404).json({ error: 'Buyurtma topilmadi' });
         if (order.status !== 'PENDING_PAYMENT') {
@@ -329,10 +338,12 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
         const isExpired = order.payment_method === 'INVOICE_B2B'
             ? orderAgeMs > INVOICE_TIMEOUT_HOURS * 3600000
             : orderAgeMs > PAYMENT_TIMEOUT_MIN * 60000;
-        if (isExpired) {
+        const gatewayActive = order.payme_transaction?.state === 1 && order.payme_transaction.expires_at.getTime() > Date.now();
+        if (isExpired && !gatewayActive) {
             await prisma.$transaction(async (tx) => {
-                const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'CANCELLED' } });
+                const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT', NOT: { payme_transaction: { is: { state: 1, expires_at: { gt: new Date() } } } } }, data: { status: 'CANCELLED' } });
                 if (r.count === 1) {
+                    await tx.paymeTransaction.updateMany({ where: { order_id: order.id, state: 1 }, data: { state: -1, reason: 4, cancel_time: new Date() } });
                     await tx.product.update({ where: { id: order.product_id }, data: { available_quantity_kg: { increment: order.quantity_kg } } });
                 }
             });
@@ -341,6 +352,15 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
         // B2B hisob-faktura: admin bank o'tkazmasini tasdiqlagach escrow'ga tushadi
         if (order.payment_method === 'INVOICE_B2B') {
             return res.json({ order, pending_invoice: true, message: "Hisob-faktura shakllandi. To'lov tasdiqlangach buyurtma faollashadi." });
+        }
+        if (paymentMode() === 'payme') {
+            if (!paymentOptions().methods.includes('PAYME'))
+                return res.status(503).json({ error: 'Payme merchant sozlamalari hali kiritilmagan' });
+            const changed = await prisma.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { payment_method: 'PAYME' } });
+            if (changed.count !== 1)
+                return res.status(409).json({ error: 'Buyurtma holati o‘zgargan' });
+            return res.json({ order: { ...order, payme_transaction: undefined, payment_method: 'PAYME' }, pending_payment: true,
+                checkout_url: paymeCheckout(order), message: 'To‘lovni Payme sahifasida yakunlang. Holat provayder tasdig‘idan keyin yangilanadi.' });
         }
         const charge = await chargeOrder(order.id, order.total_paid, order.payment_method);
         if (!charge.ok)
@@ -352,7 +372,7 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
             await holdInEscrow(tx, order);
             return tx.order.findUnique({ where: { id: order.id } });
         });
-        return res.json({ order: updated, reference: charge.reference });
+        return res.json({ order: updated, reference: charge.reference, is_demo: charge.is_demo });
     }
     catch (err) {
         if (err?.message === 'STATE')
@@ -371,6 +391,7 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
             const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'CANCELLED' } });
             if (r.count !== 1)
                 throw new Error('STATE');
+            await tx.paymeTransaction.updateMany({ where: { order_id: order.id, state: 1 }, data: { state: -1, reason: 5, cancel_time: new Date() } });
             await tx.product.update({ where: { id: order.product_id }, data: { available_quantity_kg: { increment: order.quantity_kg } } });
         });
         return res.json({ message: 'Buyurtma bekor qilindi' });

@@ -4,76 +4,40 @@ import prisma from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
 import { AUTO_APPROVE_KYC, JWT_SECRET } from '../config.js';
+import { productKind, normalizeProductName } from '../utils/product-kind.js';
 const router = Router();
 // 1. Aqlli narx tavsiyasi API (/api/products/price-recommendation va /api/price-recommendation)
 router.get('/price-recommendation', async (req, res) => {
     try {
-        const { category, region } = req.query;
-        if (!category) {
-            return res.status(400).json({ error: 'Kategoriya parametri ko\'rsatilishi shart' });
-        }
-        const categoryStr = String(category);
-        const regionStr = region ? String(region).trim() : null;
-        // Birinchi navbatda shu viloyat va kategoriya bo'yicha qidiramiz
-        let whereClause = {
-            category: categoryStr,
-            is_active: true,
-        };
-        if (regionStr) {
-            whereClause.region = { contains: regionStr, mode: 'insensitive' };
-        }
-        let products = await prisma.product.findMany({
-            where: whereClause,
-            select: { price_per_kg: true },
+        const category = typeof req.query.category === 'string' ? req.query.category : '';
+        if (!CATEGORIES.includes(category))
+            return res.status(400).json({ error: 'To‘g‘ri kategoriyani tanlang' });
+        const title = cleanText(req.query.title, 120);
+        const region = cleanText(req.query.region, 120);
+        const empty = { recommended_price: null, avg_price: null, min_price: null, max_price: null, sample_count: 0, source: 'insufficient_data' };
+        if (normalizeProductName(title).length < 2)
+            return res.json({ ...empty, context: 'Narx tavsiyasi uchun mahsulot nomini kiriting' });
+        const kind = productKind(title);
+        const candidates = await prisma.product.findMany({
+            where: { category, is_active: true, available_quantity_kg: { gt: 0 }, farmer: { kyc_status: 'APPROVED' } },
+            select: { title: true, region: true, price_per_kg: true }, orderBy: { created_at: 'desc' }, take: 2000,
         });
-        let context = 'viloyat bo\'yicha';
-        // Agar viloyat bo'yicha mahsulot topilmasa yoki kam bo'lsa, butun respublika bo'yicha hisoblaymiz
-        if (products.length === 0 && regionStr) {
-            products = await prisma.product.findMany({
-                where: {
-                    category: categoryStr,
-                    is_active: true,
-                },
-                select: { price_per_kg: true },
-            });
-            context = 'respublika bo\'yicha o\'rtacha';
-        }
-        if (products.length === 0) {
-            // Default bazaviy narxlar (agar hali mahsulot bo'lmasa)
-            const defaultPrices = {
-                MEVALAR: 20000,
-                SABZAVOTLAR: 12000,
-                POLIZ: 6000,
-                SUT_GOSHT: 85000,
-                DON: 25000,
-            };
-            const def = defaultPrices[categoryStr] || 15000;
-            return res.json({
-                recommended_price: def,
-                avg_price: def,
-                min_price: Math.round(def * 0.8),
-                max_price: Math.round(def * 1.25),
-                sample_count: 0,
-                context: 'Standart bozor tavsiyasi',
-            });
-        }
-        const prices = products.map((p) => p.price_per_kg);
-        const sum = prices.reduce((acc, curr) => acc + curr, 0);
-        const avg = Math.round(sum / prices.length);
-        const min = Math.min(...prices);
-        const max = Math.max(...prices);
-        return res.json({
-            recommended_price: avg,
-            avg_price: avg,
-            min_price: min,
-            max_price: max,
-            sample_count: prices.length,
-            context,
+        const sameKind = candidates.filter(p => productKind(p.title) === kind);
+        const local = region ? sameKind.filter(p => normalizeProductName(p.region).includes(normalizeProductName(region))) : [];
+        const products = local.length ? local : sameKind;
+        if (!products.length)
+            return res.json({ ...empty, context: 'Shu mahsulot turi bo‘yicha narx tavsiyasi uchun ma’lumot yetarli emas' });
+        const prices = products.map(p => p.price_per_kg).sort((a, b) => a - b);
+        const mid = Math.floor(prices.length / 2);
+        const median = prices.length % 2 ? prices[mid] : Math.round((prices[mid - 1] + prices[mid]) / 2);
+        res.json({ recommended_price: median, avg_price: Math.round(prices.reduce((a, b) => a + b, 0) / prices.length),
+            min_price: prices[0], max_price: prices[prices.length - 1], sample_count: prices.length,
+            source: 'matched_product', context: local.length ? 'Shu mahsulot turi, shu hudud' : 'Shu mahsulot turi, respublika bo‘yicha',
         });
     }
     catch (err) {
         console.error('Price recommendation error:', err);
-        return res.status(500).json({ error: 'Narx tavsiyasini hisoblashda xatolik' });
+        res.status(500).json({ error: 'Narx tavsiyasini hisoblashda xatolik' });
     }
 });
 // 2. Mahsulotlar ro'yxati (Filtrlar bilan)

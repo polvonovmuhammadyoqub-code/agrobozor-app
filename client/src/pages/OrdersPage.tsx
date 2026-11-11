@@ -16,23 +16,26 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   onOpenReview,
 }) => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const fetchOrders = async (silent = false) => {
+    if(!silent) setLoading(true);
     try {
       const data = await api.orders.getAll();
-      setOrders(data);
+      setOrders(data); setError('');
     } catch (e) {
-      console.error('Failed to load orders:', e);
+      setError(e instanceof Error ? e.message : 'Buyurtmalarni yuklashda xatolik');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    void fetchOrders();
+    const timer = setInterval(() => { if(!document.hidden) void fetchOrders(true); }, 10000);
+    return () => clearInterval(timer);
   }, []);
 
   const filterTabs = [
@@ -66,7 +69,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         </div>
 
         <button
-          onClick={fetchOrders}
+          onClick={() => fetchOrders()}
           className="flex items-center space-x-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-3.5 py-2 rounded-2xl text-xs font-bold transition-colors shadow-sm"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -74,6 +77,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         </button>
       </div>
 
+      {error && <p role="alert" className="p-4 bg-rose-50 text-rose-700 rounded-xl text-sm">{error}</p>}
       {/* Status Filtrlari */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
         {filterTabs.map((tab) => (

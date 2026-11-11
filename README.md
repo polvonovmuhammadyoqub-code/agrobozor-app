@@ -16,10 +16,16 @@ Nizo (24 soat ichida) -> admin: to‘liq / qisman qaytarish / fermer foydasiga
 Barcha hisob-kitob `server/src/services/settlement.ts` ichida; har holatda
 `xaridorga + fermerga + kuryerga + platformaga = to‘langan summa` bo‘ladi.
 
-## ⚠️ Hozirgi cheklov: haqiqiy to‘lov yo‘q
-`PAYMENT_MODE=mock` — test to‘lov (haqiqiy pul harakatlanmaydi). Production'da standart `disabled`.
-Click/Payme merchant API (redirect + webhook) `server/src/services/payment.ts` ga ulanadi.
-B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confirm-payment` bilan tasdiqlaydi.
+## To‘lov holati
+
+Standart production rejimi `disabled`: merchant sozlanmaguncha oddiy onlayn
+checkout yopiq va ombor band qilinmaydi. Lokal test uchun `PAYMENT_MODE=mock`
+berish mumkin; bunda haqiqiy pul harakatlanmaydi va UI buni aniq ko‘rsatadi.
+Payme Merchant API adapteri va checkout yo‘naltirishi qo‘shilgan. Jonli to‘lov
+uchun merchant shartnomasi, kalitlar va Payme sandbox tekshiruvi kerak.
+Click uchun haqiqiy adapter hali mavjud emas; Click faqat mock rejimida.
+B2B `INVOICE_B2B` to‘lovi bank o‘tkazmasidan keyin admin tomonidan tasdiqlanadi.
+To‘liq sozlash: [PAYMENTS.md](PAYMENTS.md).
 
 ## Ishga tushirish
 
@@ -43,7 +49,7 @@ B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confir
   Demo uchun `AUTO_APPROVE_KYC=true`.
 
 ## Keyingi qadamlar (MVP'dan keyin)
-Click/Payme integratsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · Sentry.
+Click adapteri va provayder sertifikatsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · Sentry.
 
 ## Admin yaratish (kompyutersiz) — Supabase SQL Editor
 ```sql
@@ -149,3 +155,13 @@ Eski sharhlar unikal indeksi uchun yuqoridagi alohida ko‘rsatma ham amal qilad
 To‘liq testlar uchun `TEST_DATABASE_URL` bilan server va brauzer testlarini
 ishga tushiring. Haqiqiy chat testi ikki mobil sessiyada xaridor xabari, fermer
 javobi, o‘qish huquqlari va fermerning ko‘ruvchilar statistikasi oqimini tekshiradi.
+
+## Narx tavsiyasi
+
+`GET /api/products/price-recommendation?category=MEVALAR&title=Olma&region=Toshkent`
+faqat bir xil mahsulot turidagi faol, qoldig‘i bor va tasdiqlangan fermer
+lotlarini solishtiradi. Hududda topilmasa respublika bo‘yicha ayni tur olinadi.
+Turli mevalar va quritilgan mahsulotlar aralashtirilmaydi; mos lot yo‘q bo‘lsa
+`recommended_price: null` qaytadi. Tavsiya median, `avg_price` arifmetik o‘rtacha.
+Eng yangi 2000 mos kategoriya loti ko‘rib chiqiladi. Bu taxminiy bozor tavsiyasi,
+nav/sifat sertifikatsiyasi emas. Qo‘lda kiritilgan narx avtomatik almashtirilmaydi.

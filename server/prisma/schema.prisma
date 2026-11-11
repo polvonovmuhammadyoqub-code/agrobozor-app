@@ -94,6 +94,7 @@ model Order {
   courier                   User?         @relation("CourierOrders", fields: [courier_id], references: [id])
   product                   Product       @relation(fields: [product_id], references: [id])
   transactions              Transaction[]
+  payme_transaction         PaymeTransaction?
   dispute                   Dispute?
   reviews                   Review[]
 }
@@ -211,4 +212,21 @@ model Message {
   sender          User     @relation(fields: [sender_id], references: [id])
 
   @@index([conversation_id, created_at, id])
+}
+
+model PaymeTransaction {
+  id            String   @id @default(uuid())
+  provider_id   String   @unique
+  order_id      String   @unique
+  amount_tiyin  BigInt
+  provider_time BigInt
+  create_time   DateTime @default(now())
+  expires_at    DateTime
+  perform_time  DateTime?
+  cancel_time   DateTime?
+  state         Int      @default(1)
+  reason        Int?
+  order         Order    @relation(fields: [order_id], references: [id])
+
+  @@index([provider_time])
 }

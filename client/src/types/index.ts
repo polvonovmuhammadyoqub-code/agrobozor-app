@@ -166,11 +166,12 @@ export interface Transaction {
 }
 
 export interface PriceRecommendation {
-  recommended_price: number;
-  avg_price: number;
-  min_price: number;
-  max_price: number;
+  recommended_price: number | null;
+  avg_price: number | null;
+  min_price: number | null;
+  max_price: number | null;
   sample_count: number;
+  source: 'matched_product' | 'insufficient_data';
   context: string;
 }
 

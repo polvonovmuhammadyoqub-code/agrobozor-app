@@ -59,6 +59,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  payments: { options: () => request<{ mode: string; methods: string[]; message: string }>('/payments/options') },
+
   // Auth
   auth: {
     login: (phone: string, password?: string, _otp?: string) =>
@@ -115,9 +117,10 @@ export const api = {
       request<{ message: string }>(`/products/${id}`, {
         method: 'DELETE',
       }),
-    getPriceRecommendation: (category: string, region?: string) => {
+    getPriceRecommendation: (category: string, region?: string, title?: string) => {
       const query = new URLSearchParams({ category });
       if (region) query.append('region', region);
+      if (title) query.append('title', title);
       return request<PriceRecommendation>(`/price-recommendation?${query.toString()}`);
     },
   },
@@ -152,7 +155,7 @@ export const api = {
         body: JSON.stringify(body),
       }),
     pay: (id: string, payment_method?: string) =>
-      request<{ order: Order; pending_invoice?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
+      request<{ order: Order; pending_invoice?: boolean; pending_payment?: boolean; checkout_url?: string; is_demo?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
         method: 'POST',
         body: JSON.stringify({ payment_method }),
       }),

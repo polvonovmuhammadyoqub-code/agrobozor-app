@@ -1,4 +1,4 @@
-import { PAYMENT_MODE } from '../config.js';
+import { paymentMode } from './payment-options.js';
 
 export interface ChargeResult {
   ok: boolean;
@@ -22,7 +22,7 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
     };
   }
 
-  if (PAYMENT_MODE === 'mock') {
+  if (paymentMode() === 'mock') {
     return {
       ok: true,
       reference: `DEMO-${method}-${orderId}`,
@@ -32,7 +32,7 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
 
   return {
     ok: false,
-    error: "Onlayn to'lov tizimlari (Click/Payme) hozircha test rejimida. Iltimos, B2B hisob-faktura orqali to'lang yoki administrator bilan bog'laning.",
+    error: "Haqiqiy onlayn to‘lov hali yoqilmagan. To‘lov usullarini tekshiring yoki administrator bilan bog‘laning.",
   };
 }
 
@@ -40,7 +40,7 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
  * Qaytarish jarayoni (Refund) uchun to'lov qaytarish adapteri
  */
 export async function refundOrder(orderId: string, amount: number, reference?: string): Promise<{ ok: boolean; refundReference?: string }> {
-  if (PAYMENT_MODE === 'mock') {
+  if (paymentMode() === 'mock') {
     return {
       ok: true,
       refundReference: `REFUND-DEMO-${orderId.slice(0, 8)}-${Date.now()}`,

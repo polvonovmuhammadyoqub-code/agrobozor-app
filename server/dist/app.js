@@ -12,6 +12,8 @@ import reviewRoutes from './routes/reviews.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/users.js';
 import messageRoutes from './routes/messages.js';
+import { paymeHandler } from './services/payme.js';
+import { paymentOptions } from './services/payment-options.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const app = express();
@@ -20,6 +22,11 @@ app.use(helmet({ contentSecurityPolicy: false }));
 // Frontend va API bir domenda (Vercel) — CORS faqat aniq ko'rsatilgan manzillar uchun
 const allowed = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
 app.use(cors({ origin: allowed.length ? allowed : false }));
+// Payme requires JSON-RPC errors with HTTP 200, including malformed JSON.
+app.post('/api/payments/payme', express.json({ limit: '100kb' }), paymeHandler);
+app.use('/api/payments/payme', ((err, _req, res, _next) => {
+    res.status(200).json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Invalid JSON' } });
+}));
 app.use(express.json({ limit: '100kb' }));
 // Brute-force va spamdan himoya
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
@@ -32,6 +39,7 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/verify-code', authLimiter);
 app.use('/api/auth/send-verification-code', codeLimiter);
+app.get('/api/payments/options', (_req, res) => res.json(paymentOptions()));
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 // Eski mijoz kodi uchun qisqa yo'l: /api/price-recommendation

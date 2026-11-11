@@ -48,6 +48,7 @@ after(async () => {
   await prisma.transaction.deleteMany({ where: { OR: [{ user_id: { in: ids } }, { order: orders }] } });
   await prisma.withdrawalRequest.deleteMany({ where: { user_id: { in: ids } } });
   await prisma.conversation.deleteMany({ where: { OR: [{ buyer_id: { in: ids } }, { seller_id: { in: ids } }] } });
+  await prisma.paymeTransaction.deleteMany({ where: { order: orders } });
   await prisma.order.deleteMany({ where: orders });
   await prisma.product.deleteMany({ where: { farmer_id: { in: ids } } });
   await prisma.user.deleteMany({ where: { id: { in: ids } } });
@@ -345,4 +346,95 @@ test('farmer stock edits detect stale quantities and analytics uses actual payou
   await prisma.transaction.create({ data: { order_id:order.id, user_id:users.FARMER.id, type:'ESCROW_RELEASE_FARMER', amount:4500 } });
   const stats = await request(`/products/${p.id}/analytics`, 'FARMER', undefined, 'GET');
   assert.equal(stats.data.earned, 4500);
+});
+
+test('price recommendations separate commodities, regions, processing and unapproved stock', options, async () => {
+  const apple = await makeProduct();
+  const grapes = await makeProduct();
+  const dried = await makeProduct();
+  await prisma.product.update({where:{id:apple.id},data:{title:'Qizil olma',price_per_kg:12345,region:'Narx test hududi'}});
+  await prisma.product.update({where:{id:grapes.id},data:{title:'Shirin uzum',price_per_kg:50000,region:'Narx test hududi'}});
+  await prisma.product.update({where:{id:dried.id},data:{title:'Quritilgan olma',price_per_kg:80000,region:'Narx test hududi'}});
+  const emptyStock = await makeProduct(0);
+  await prisma.product.update({where:{id:emptyStock.id},data:{title:'Olma',price_per_kg:1,region:'Narx test hududi'}});
+  const pendingFarmerId=randomUUID();ids.push(pendingFarmerId);
+  await prisma.user.create({data:{id:pendingFarmerId,phone:`test-${pendingFarmerId}`,password_hash:'unused',full_name:'Pending farmer',role:'FARMER',region:'Narx test hududi',tin_or_passport:'TEST',kyc_status:'PENDING'}});
+  const hidden=await makeProduct();
+  await prisma.product.update({where:{id:hidden.id},data:{farmer_id:pendingFarmerId,title:'Olma',price_per_kg:999999,region:'Narx test hududi'}});
+  const rec = await request('/products/price-recommendation?category=MEVALAR&title=Olma&region=Narx%20test',undefined,undefined,'GET');
+  assert.equal(rec.status,200);assert.equal(rec.data.recommended_price,12345);assert.equal(rec.data.sample_count,1);
+  const none = await request('/products/price-recommendation?category=MEVALAR&title=Dragonfruit',undefined,undefined,'GET');
+  assert.equal(none.data.recommended_price,null);assert.equal(none.data.sample_count,0);
+  const noTitle = await request('/products/price-recommendation?category=MEVALAR',undefined,undefined,'GET');
+  assert.equal(noTitle.data.recommended_price,null);
+  const invalid = await request('/products/price-recommendation?category=INVALID&title=olma',undefined,undefined,'GET');
+  assert.equal(invalid.status,400);
+});
+
+test('unconfigured online payment rejects checkout before reserving stock', options, async () => {
+  const mode = process.env.PAYMENT_MODE;delete process.env.PAYMENT_MODE;
+  const p = await makeProduct(5);
+  try {
+    const options = await request('/payments/options',undefined,undefined,'GET');
+    assert.deepEqual(options.data.methods,[]);
+    assert.equal((await createOrder(p)).status,503);
+    assert.equal((await request('/orders/checkout','BUYER_B2C',{items:[{product_id:p.id,quantity_kg:1}],delivery_address:'Toshkent test address',payment_method:'CLICK'})).status,503);
+    assert.equal((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg,5);
+  } finally { process.env.PAYMENT_MODE=mode; }
+});
+
+test('Payme redirects without payment, authenticates callbacks, holds escrow exactly once and refunds externally once', options, async () => {
+  const saved = Object.fromEntries(['PAYMENT_MODE','PAYME_MERCHANT_ID','PAYME_KEY','PAYME_SANDBOX','APP_URL'].map(k=>[k,process.env[k]]));
+  Object.assign(process.env,{PAYMENT_MODE:'payme',PAYME_MERCHANT_ID:'0123456789abcdef01234567',PAYME_KEY:'test-merchant-key',PAYME_SANDBOX:'true',APP_URL:'https://agrobozor.example'});
+  const rpc = async(method:string,params:any,valid=true)=>{
+    const res = await fetch(base+'/api/payments/payme',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Basic '+Buffer.from('Paycom:'+(valid?'test-merchant-key':'wrong-key')).toString('base64')},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});
+    assert.equal(res.status,200);return res.json();
+  };
+  try {
+    const p = await makeProduct(10); const created = await createOrder(p,1,'BUYER_B2C','PAYME');assert.equal(created.status,201);
+    const o = created.data;
+    const checkout = await request(`/orders/${o.id}/pay`,'BUYER_B2C',{});
+    assert.equal(checkout.data.pending_payment,true);assert.ok(checkout.data.checkout_url.startsWith('https://test.paycom.uz/'));
+    assert.equal((await prisma.order.findUnique({where:{id:o.id}})).status,'PENDING_PAYMENT');
+    const info = {account:{order_id:o.id},amount:o.total_paid*100};
+    assert.equal((await rpc('CheckPerformTransaction',info,false)).error.code,-32504);
+    assert.equal((await rpc('CheckPerformTransaction',{...info,amount:1})).error.code,-31001);
+    assert.equal((await rpc('CheckPerformTransaction',info)).result.allow,true);
+    const id = randomUUID().replaceAll('-','').slice(0,24);const time=Date.now();
+    const transaction = await rpc('CreateTransaction',{...info,id,time});assert.equal(transaction.result.state,1);
+    assert.equal((await rpc('CreateTransaction',{...info,id,time})).result.transaction,transaction.result.transaction);
+    assert.equal((await rpc('CreateTransaction',{...info,id:'abcdefabcdefabcdefabcdef',time})).error.code,-31099);
+    const { releaseExpiredOrders } = await import('../src/routes/orders.js');
+    await prisma.order.update({where:{id:o.id},data:{created_at:new Date(Date.now()-40*60000)}});
+    await releaseExpiredOrders();assert.equal((await prisma.order.findUnique({where:{id:o.id}})).status,'PENDING_PAYMENT');
+    const paid = await Promise.all([rpc('PerformTransaction',{id}),rpc('PerformTransaction',{id})]);
+    for(const r of paid)assert.equal(r.result.state,2);
+    assert.equal(await prisma.transaction.count({where:{order_id:o.id,type:'ESCROW_HOLD'}}),1);
+    const before = (await prisma.user.findUnique({where:{id:users.BUYER_B2C.id}})).wallet_available;
+    const refunds = await Promise.all([rpc('CancelTransaction',{id,reason:1}),rpc('CancelTransaction',{id,reason:1})]);
+    for(const r of refunds)assert.equal(r.result.state,-2);
+    assert.equal((await prisma.user.findUnique({where:{id:users.BUYER_B2C.id}})).wallet_available,before);
+    assert.equal(await prisma.transaction.count({where:{order_id:o.id,type:'REFUND_EXTERNAL'}}),1);
+    assert.equal((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg,10);
+    const statement = await rpc('GetStatement',{from:time-1,to:time+1});assert.equal(statement.result.transactions.length,1);assert.equal(statement.result.transactions[0].state,-2);
+    const malformed = await fetch(base+'/api/payments/payme',{method:'POST',headers:{'Content-Type':'application/json'},body:'{'});assert.equal(malformed.status,200);assert.equal((await malformed.json()).error.code,-32700);
+  } finally { for(const [k,v] of Object.entries(saved))if(v===undefined)delete process.env[k];else process.env[k]=v; }
+});
+
+test('Payme expiry and buyer cancellation release a reservation once and block late confirmation', options, async () => {
+  const saved = Object.fromEntries(['PAYMENT_MODE','PAYME_MERCHANT_ID','PAYME_KEY','PAYME_SANDBOX','APP_URL'].map(k=>[k,process.env[k]]));
+  Object.assign(process.env,{PAYMENT_MODE:'payme',PAYME_MERCHANT_ID:'0123456789abcdef01234567',PAYME_KEY:'test-merchant-key',PAYME_SANDBOX:'true',APP_URL:'https://agrobozor.example'});
+  const rpc=async(method:string,params:any)=>(await fetch(base+'/api/payments/payme',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Basic '+Buffer.from('Paycom:test-merchant-key').toString('base64')},body:JSON.stringify({id:1,method,params})})).json();
+  try {
+    for(const expired of [true,false]) {
+      const p=await makeProduct(2);const order=(await createOrder(p,1,'BUYER_B2C','PAYME')).data;
+      const id=randomUUID().replaceAll('-','').slice(0,24);
+      assert.equal((await rpc('CreateTransaction',{id,time:Date.now(),amount:order.total_paid*100,account:{order_id:order.id}})).result.state,1);
+      if(expired){await prisma.paymeTransaction.update({where:{provider_id:id},data:{expires_at:new Date(Date.now()-1000)}});assert.equal((await rpc('PerformTransaction',{id})).error.code,-31008);}
+      else assert.equal((await request(`/orders/${order.id}/cancel`,'BUYER_B2C',{})).status,200);
+      assert.equal((await rpc('PerformTransaction',{id})).error.code,-31008);
+      assert.equal((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg,2);
+      assert.equal((await rpc('CheckTransaction',{id})).result.state,-1);
+    }
+  }finally{for(const [k,v]of Object.entries(saved))if(v===undefined)delete process.env[k];else process.env[k]=v;}
 });
