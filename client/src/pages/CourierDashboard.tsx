@@ -133,6 +133,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
       >
         Buyurtmalarni yangilash
       </button>
+      {orders.some(o=>o.payment_method==='DIRECT_FARMER') && <p className="p-4 bg-amber-50 text-amber-900 text-sm rounded-2xl">Bevosita to‘lovli buyurtmalarda kuryer haqini fermer qo‘lda beradi. Bu pul platforma hamyoniga avtomatik tushmaydi.</p>}
       {/* KPI Kartalari */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-1">
@@ -238,7 +239,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
                         kg)
                       </span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                        +{o.courier_payout.toLocaleString()} so‘m kuryer haqi
+                        +{o.courier_payout.toLocaleString()} so‘m {o.payment_method === 'DIRECT_FARMER' ? '— fermer qo‘lda to‘laydi' : 'kuryer haqi'}
                       </span>
                     </div>
                     <div className="text-gray-600 flex items-center space-x-1">

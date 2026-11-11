@@ -64,7 +64,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
             <span>Mening Buyurtmalarim</span>
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Escrow kafolatlangan buyurtmalar zanjiri va yetkazib berish holati
+            Buyurtmalar, to‘lov tasdig‘i va yetkazib berish holati
           </p>
         </div>
 

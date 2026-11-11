@@ -48,6 +48,7 @@ router.post('/', authenticateToken, requireRole(['BUYER_B2C', 'BUYER_B2B']), asy
 
     const order = await prisma.order.findUnique({ where: { id: order_id } });
     if (!order || order.buyer_id !== buyerId) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    if(order.payment_method === 'DIRECT_FARMER') return res.status(400).json({error:'Pul fermerga bevosita to‘langan. Qaytarishni fermer bilan kelishing; platformada escrow yo‘q.'});
     if (!DISPUTABLE.includes(order.status)) {
       return res.status(400).json({ error: 'Bu holatdagi buyurtma bo‘yicha nizo ochib bo‘lmaydi' });
     }

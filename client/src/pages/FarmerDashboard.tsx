@@ -73,7 +73,7 @@ export function FarmerDashboard(p: Props) {
   const mostViewed = [...products].sort(
     (a, b) => (b._count?.views || 0) - (a._count?.views || 0),
   )[0];
-  const pending = orders.filter((o) => o.status === 'PAID_IN_ESCROW').length;
+  const pending = orders.filter((o) => o.status === 'PAID_IN_ESCROW' || (o.payment_method === 'DIRECT_FARMER' && o.status === 'PENDING_PAYMENT')).length;
   return (
     <div className="space-y-6">
       <div className="flex justify-between gap-3 items-start">

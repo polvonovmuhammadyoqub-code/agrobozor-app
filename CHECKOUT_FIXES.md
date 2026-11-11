@@ -10,7 +10,7 @@
 | Yangi mahsulot ko‘rinmasligi | Callback ro‘yxatni qayta yuklaydi; AddProductModal’dagi shartli hook xatosi ham tuzatildi. Brauzer testi ochish/yopish/qayta ochish/yaratish oqimini tekshiradi. |
 
 Sinov rejimi faqat aniq `PAYMENT_MODE=mock` bilan yoqiladi. O‘zgaruvchi
-berilmaganda ham onlayn to‘lov yopiq. Noto‘liq merchant konfiguratsiyasida
+berilmaganda `direct` rejimi — fermerga bevosita to‘lov ishlaydi. Noto‘liq merchant konfiguratsiyasida
 B2C checkout omborni band qilmaydi. B2B bank hisob-fakturasi alohida ishlaydi.
 
 Tekshiruv: 25 ta server testi va 11 ta Chromium brauzer testi, build muvaffaqiyatli.

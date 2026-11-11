@@ -71,7 +71,7 @@ export function CartCheckoutModal({
         amount: number;
         url: string;
       }> = [];
-      if (method !== 'INVOICE_B2B')
+      if (!['INVOICE_B2B', 'DIRECT_FARMER'].includes(method))
         for (const order of created.orders) {
           try {
             const result = await api.orders.pay(order.id);
@@ -95,19 +95,24 @@ export function CartCheckoutModal({
         }
       clearCart();
       const message =
-        method === 'INVOICE_B2B'
-          ? `${created.orders.length} ta buyurtma yaratildi. Bank to‘lovi tasdiqlanishi kutilmoqda.`
-          : failures
-            ? `${created.orders.length} ta buyurtma yaratildi. ${failures} ta buyurtma to'lovi tasdiqlanmadi. Buyurtmalar sahifasida holatni tekshirib, qayta to‘lang.`
-            : pending
-              ? `${pending} ta buyurtma to‘lov kutmoqda. Har bir buyurtmani Payme orqali to‘lang.`
-              : demo
-                ? 'Sinov to‘lovlari bajarildi. Haqiqiy pul yechilmadi.'
-                : 'Barcha buyurtmalar to‘lovi tasdiqlandi.';
+        method === 'DIRECT_FARMER'
+          ? `${created.orders.length} ta buyurtma yaratildi. To‘lovni har bir fermer bilan alohida kelishing. Pul tushganini fermer tasdiqlaydi; platforma pul qabul qilmaydi.`
+          : method === 'INVOICE_B2B'
+            ? `${created.orders.length} ta buyurtma yaratildi. Bank to‘lovi tasdiqlanishi kutilmoqda.`
+            : failures
+              ? `${created.orders.length} ta buyurtma yaratildi. ${failures} ta buyurtma to'lovi tasdiqlanmadi. Buyurtmalar sahifasida holatni tekshirib, qayta to‘lang.`
+              : pending
+                ? `${pending} ta buyurtma to‘lov kutmoqda. Har bir buyurtmani Payme orqali to‘lang.`
+                : demo
+                  ? 'Sinov to‘lovlari bajarildi. Haqiqiy pul yechilmadi.'
+                  : 'Barcha buyurtmalar to‘lovi tasdiqlandi.';
       setReceipt({
         message,
         total: created.grand_total,
-        paid: !failures && !pending && method !== 'INVOICE_B2B',
+        paid:
+          !failures &&
+          !pending &&
+          !['INVOICE_B2B', 'DIRECT_FARMER'].includes(method),
         links,
       });
     } catch (e) {

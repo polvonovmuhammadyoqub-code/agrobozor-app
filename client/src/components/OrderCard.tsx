@@ -89,11 +89,17 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     }
   };
 
+  const direct = order.payment_method === 'DIRECT_FARMER';
   const statusBadge = getStatusBadge(order.status);
+  if (direct && order.status === 'CONFIRMED_BY_FARMER')
+    statusBadge.label = 'Fermer to‘lovni oldi';
 
   // Stepper holatlari
   const steps: { key: OrderStatus; label: string }[] = [
-    { key: 'PAID_IN_ESCROW', label: "To'lov (Escrow)" },
+    {
+      key: 'PAID_IN_ESCROW',
+      label: direct ? 'Fermerga to‘lov' : "To'lov (Escrow)",
+    },
     { key: 'CONFIRMED_BY_FARMER', label: 'Fermer tayyorladi' },
     { key: 'IN_TRANSIT', label: "Kuryer yo'lda" },
     { key: 'DELIVERED', label: 'Yetkazildi' },
@@ -109,6 +115,24 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const currentStepIdx = getStepIndex(order.status);
 
   const [paymentError, setPaymentError] = useState('');
+  const confirmDirect = async () => {
+    if (
+      !confirm(
+        `${order.total_paid.toLocaleString()} so‘m sizga haqiqatan kelib tushdimi? Xaridor yozganiga qarab emas, o‘z hisobingizdan tekshirib tasdiqlang.`,
+      )
+    )
+      return;
+    setLoadingAction('direct');
+    setPaymentError('');
+    try {
+      await api.orders.confirmDirectPayment(order.id, order.total_paid);
+      onRefresh();
+    } catch (e) {
+      setPaymentError(e instanceof Error ? e.message : 'Tasdiqlashda xatolik');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
   const handlePay = async () => {
     setLoadingAction('pay');
     setPaymentError('');
@@ -134,7 +158,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const handleCompleteOrder = async () => {
     if (
       !confirm(
-        "Mahsulotni to'liq qabul qildingizmi? Tasdiqlasangiz, mablag' fermer va kuryer hisobiga o'tkaziladi.",
+        direct
+          ? 'Mahsulotni to‘liq qabul qildingizmi? Bu yerda pul o‘tkazilmaydi.'
+          : "Mahsulotni to'liq qabul qildingizmi? Tasdiqlasangiz, mablag' fermer va kuryer hisobiga o'tkaziladi.",
       )
     ) {
       return;
@@ -332,7 +358,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
 
         <div className="text-left sm:text-right w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-200">
-          <div className="text-xs text-gray-500">Jami to'langan summa:</div>
+          <div className="text-xs text-gray-500">
+            {order.status === 'PENDING_PAYMENT'
+              ? 'To‘lanishi kerak:'
+              : direct
+                ? 'Fermer olgan summa:'
+                : "Jami to'langan summa:"}
+          </div>
           <div className="text-lg font-black text-agro-green">
             {order.total_paid.toLocaleString()} so'm
           </div>
@@ -404,21 +436,54 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
       )}
 
+      {direct && (
+        <div className="bg-amber-50 text-amber-900 rounded-xl p-4 text-sm space-y-2">
+          <p>
+            To‘lov bevosita fermerga. Platformada escrow yo‘q va hamyonlarga pul
+            qo‘shilmaydi. Yetkazish haqini fermer kuryerga qo‘lda beradi.
+            Qaytarishni ham fermer bilan kelishing.
+          </p>
+          {order.farmer?.phone && (
+            <a
+              href={`tel:${order.farmer.phone}`}
+              className="block font-bold underline"
+            >
+              Fermerga qo‘ng‘iroq: {order.farmer.phone}
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Harakatlar Tugmalari (Har bir rol uchun) */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
         <div className="flex items-center space-x-2">
           {/* Escrow kafolat eslatmasi */}
-          {!['COMPLETED', 'REFUNDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(
-            order.status,
-          ) && (
-            <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Escrowda himoyalangan</span>
-            </div>
-          )}
+          {!direct &&
+            !['COMPLETED', 'REFUNDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(
+              order.status,
+            ) && (
+              <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Escrowda himoyalangan</span>
+              </div>
+            )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {direct &&
+            order.status === 'PENDING_PAYMENT' &&
+            user?.role === 'FARMER' &&
+            user.id === order.farmer_id && (
+              <button
+                onClick={confirmDirect}
+                disabled={!!loadingAction}
+                className="bg-agro-green text-white rounded-xl py-3 px-4 font-bold disabled:opacity-40"
+              >
+                {loadingAction === 'direct'
+                  ? 'Saqlanmoqda…'
+                  : 'To‘lovni oldim — tasdiqlash'}
+              </button>
+            )}
           {paymentError && (
             <p role="alert" className="text-rose-700 text-xs w-full">
               {paymentError}
@@ -426,7 +491,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           )}
           {isBuyer &&
             order.status === 'PENDING_PAYMENT' &&
-            order.payment_method !== 'INVOICE_B2B' && (
+            !['INVOICE_B2B', 'DIRECT_FARMER'].includes(
+              order.payment_method,
+            ) && (
               <button
                 onClick={handlePay}
                 disabled={!!loadingAction}
@@ -498,12 +565,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               order.status === 'IN_TRANSIT' ||
               order.status === 'CONFIRMED_BY_FARMER') && (
               <>
-                <button
-                  onClick={() => onOpenDispute(order)}
-                  className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold px-3.5 py-2 rounded-xl transition-colors"
-                >
-                  Shikoyat qilish (Nizo)
-                </button>
+                {!direct && (
+                  <button
+                    onClick={() => onOpenDispute(order)}
+                    className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold px-3.5 py-2 rounded-xl transition-colors"
+                  >
+                    Shikoyat qilish (Nizo)
+                  </button>
+                )}
                 <button
                   onClick={handleCompleteOrder}
                   disabled={loadingAction === 'complete'}
@@ -512,7 +581,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                   <CheckCircle2 className="w-4 h-4 text-agro-amber" />
                   <span>
                     {loadingAction === 'complete'
-                      ? 'Pul yechilmoqda...'
+                      ? direct
+                        ? 'Yakunlanmoqda…'
+                        : 'Pul yechilmoqda...'
                       : "Qabul qildim, e'tirozim yo'q"}
                   </span>
                 </button>

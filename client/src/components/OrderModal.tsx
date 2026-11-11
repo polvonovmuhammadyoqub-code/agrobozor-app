@@ -66,7 +66,13 @@ export function OrderModal({
       });
       try {
         const result = await api.orders.pay(order.id);
-        if (result.pending_payment)
+        if (result.pending_direct)
+          setReceipt({
+            message:
+              'Buyurtma yaratildi. To‘lovni fermer bilan kelishing. Fermer pul tushganini tasdiqlagach yetkazish boshlanadi. Platforma pul qabul qilmaydi.',
+            paid: false,
+          });
+        else if (result.pending_payment)
           setReceipt({
             message:
               'Buyurtma yaratildi. To‘lov hali tasdiqlanmagan. Payme sahifasida yakunlang.',

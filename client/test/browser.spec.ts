@@ -159,3 +159,33 @@ test('add product opens repeatedly, preserves manual price and immediately refre
   await expect(page.getByRole('heading',{name:'Qizil olma',exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('buyer manual checkout waits for farmer confirmation and never claims escrow', async ({page})=>{
+  await page.addInitScript(()=>localStorage.setItem('agro_token','test-token'));
+  await page.route('**/api/auth/me',route=>route.fulfill({json:user}));
+  await page.route('**/api/products?*',route=>route.fulfill({json:[product]}));
+  await page.route('**/api/payments/options',route=>route.fulfill({json:{mode:'direct',methods:['DIRECT_FARMER'],message:'To‘lov bevosita fermerga. Platforma pul qabul qilmaydi.'}}));
+  await page.route('**/api/orders/checkout',async route=>{expect(route.request().postDataJSON().payment_method).toBe('DIRECT_FARMER');await route.fulfill({status:201,json:{orders:[{id:'direct-order',status:'PENDING_PAYMENT',total_paid:25000}],grand_total:25000}});});
+  await page.goto('/');await page.getByTitle("Savatga qo'shish").click();await page.getByTitle('Savat',{exact:true}).click();
+  await page.getByRole('button',{name:'Buyurtmani Rasmiylashtirish'}).click();
+  await expect(page.getByRole('radio',{name:'Bevosita fermerga'})).toBeChecked();
+  await page.getByRole('button',{name:'Buyurtmani Tasdiqlash'}).click();
+  await expect(page.getByRole('status')).toContainText('fermer tasdiqlaydi');
+  await expect(page.getByRole('status')).toContainText('platforma pul qabul qilmaydi');
+  await expect(page.getByRole('dialog')).not.toContainText('Escrow');
+});
+
+test('farmer sees a receive-payment action and direct orders have no escrow badge',async({page})=>{
+  const farmer={...user,id:'farmer',role:'FARMER',full_name:'Test Farmer',kyc_status:'APPROVED'};
+  const order={id:'direct-order',buyer_id:'buyer',farmer_id:'farmer',payment_method:'DIRECT_FARMER',status:'PENDING_PAYMENT',quantity_kg:1,total_paid:25000,delivery_fee:15000,product_total_amount:10000,platform_commission:0,courier_payout:15000,created_at:new Date().toISOString(),delivery_address:'Toshkent Test 10',product,farmer:{id:'farmer',full_name:'Test Farmer',region:'Toshkent',phone:'+998901234567'},buyer:{id:'buyer',full_name:'Test Buyer',phone:'+998901111111',region:'Toshkent'}};
+  await page.addInitScript(()=>localStorage.setItem('agro_token','test-token'));
+  await page.route('**/api/auth/me',route=>route.fulfill({json:farmer}));await page.route('**/api/products/mine/list',route=>route.fulfill({json:[]}));
+  await page.route('**/api/orders',route=>route.fulfill({json:[order]}));
+  await page.route('**/api/orders/direct-order/confirm-direct-payment',async route=>{expect(route.request().postDataJSON()).toEqual({received:true,received_amount:25000});order.status='CONFIRMED_BY_FARMER';await route.fulfill({json:{message:'Tasdiqlandi'}});});
+  page.on('dialog',dialog=>dialog.accept());
+  await page.goto('/');await page.getByRole('button',{name:/^Buyurtmalar/}).first().click();
+  await expect(page.getByText('Escrowda himoyalangan')).toHaveCount(0);
+  await page.getByRole('button',{name:'To‘lovni oldim — tasdiqlash'}).click();
+  await expect(page.getByText('Fermer to‘lovni oldi',{exact:true})).toBeVisible();
+  await expect(page.getByText('Escrowda himoyalangan')).toHaveCount(0);
+});

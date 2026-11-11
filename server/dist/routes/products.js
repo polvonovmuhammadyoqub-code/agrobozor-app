@@ -128,15 +128,16 @@ router.get('/:id/analytics', authenticateToken, async (req, res) => {
         if (!product || (product.farmer_id !== req.user.id && req.user.role !== 'ADMIN')) {
             return res.status(404).json({ error: 'Mahsulot topilmadi' });
         }
-        const [unique_views, viewers, sales, order_count, earnings] = await Promise.all([
+        const [unique_views, viewers, sales, order_count, earnings, directSales] = await Promise.all([
             prisma.productView.count({ where: { product_id: product.id } }),
             prisma.productView.findMany({ where: { product_id: product.id }, orderBy: { last_viewed_at: 'desc' }, take: 50,
                 select: { id: true, last_viewed_at: true, viewer: { select: { id: true, full_name: true, region: true } } } }),
             prisma.order.aggregate({ where: { product_id: product.id, status: 'COMPLETED' }, _sum: { quantity_kg: true, farmer_payout: true } }),
             prisma.order.count({ where: { product_id: product.id } }),
             prisma.transaction.aggregate({ where: { user_id: product.farmer_id, type: 'ESCROW_RELEASE_FARMER', order: { product_id: product.id } }, _sum: { amount: true } }),
+            prisma.order.aggregate({ where: { product_id: product.id, payment_method: 'DIRECT_FARMER', status: 'COMPLETED' }, _sum: { product_total_amount: true } }),
         ]);
-        res.json({ unique_views, viewers, order_count, sold_kg: sales._sum.quantity_kg || 0, earned: earnings._sum.amount || 0 });
+        res.json({ unique_views, viewers, order_count, sold_kg: sales._sum.quantity_kg || 0, earned: (earnings._sum.amount || 0) + (directSales._sum.product_total_amount || 0) });
     }
     catch (err) {
         console.error('Product analytics error:', err);

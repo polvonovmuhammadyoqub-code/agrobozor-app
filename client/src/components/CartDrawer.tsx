@@ -133,7 +133,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <div className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-xl border border-emerald-200 flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>Escrow xavfsiz to'lov tizimi orqali to'lanadi</span>
+              <span>To‘lov usuli keyingi bosqichda ko‘rsatiladi</span>
             </div>
 
             <button

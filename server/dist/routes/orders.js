@@ -8,7 +8,7 @@ import { holdInEscrow, settleOrder } from '../services/settlement.js';
 import { cleanText, maskId, positiveNumber } from '../utils/validate.js';
 const router = Router();
 const BUYER_ROLES = ['BUYER_B2C', 'BUYER_B2B'];
-const METHODS = ['CLICK', 'PAYME', 'UZCARD', 'HUMO', 'INVOICE_B2B'];
+const METHODS = ['CLICK', 'PAYME', 'UZCARD', 'HUMO', 'INVOICE_B2B', 'DIRECT_FARMER'];
 // Parolsiz, xavfsiz foydalanuvchi maydonlari
 const PARTY = { id: true, full_name: true, phone: true, region: true, farm_or_company_name: true };
 const FULL_INCLUDE = {
@@ -48,8 +48,8 @@ export async function releaseExpiredOrders() {
                 status: 'PENDING_PAYMENT',
                 NOT: { payme_transaction: { is: { state: 1, expires_at: { gt: new Date() } } } },
                 OR: [
-                    { payment_method: { not: 'INVOICE_B2B' }, created_at: { lt: new Date(now - PAYMENT_TIMEOUT_MIN * 60000) } },
-                    { payment_method: 'INVOICE_B2B', created_at: { lt: new Date(now - INVOICE_TIMEOUT_HOURS * 3600000) } },
+                    { payment_method: { notIn: ['INVOICE_B2B', 'DIRECT_FARMER'] }, created_at: { lt: new Date(now - PAYMENT_TIMEOUT_MIN * 60000) } },
+                    { payment_method: { in: ['INVOICE_B2B', 'DIRECT_FARMER'] }, created_at: { lt: new Date(now - INVOICE_TIMEOUT_HOURS * 3600000) } },
                 ],
             },
             take: 50,
@@ -131,7 +131,7 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
         const { product_id, delivery_schedule } = req.body || {};
         const qty = positiveNumber(req.body?.quantity_kg);
         const delivery_address = cleanText(req.body?.delivery_address, 300);
-        const payment_method = METHODS.includes(req.body?.payment_method) ? req.body.payment_method : 'CLICK';
+        const payment_method = METHODS.includes(req.body?.payment_method) ? req.body.payment_method : (paymentOptions().methods[0] || 'CLICK');
         if (!product_id || !qty || delivery_address.length < 5) {
             return res.status(400).json({ error: "Mahsulot, miqdor va to'liq manzilni kiriting" });
         }
@@ -141,6 +141,8 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
         if (payment_method !== 'INVOICE_B2B' && !paymentOptions().methods.length) {
             return res.status(503).json({ error: 'Onlayn to‘lov hali ulanmagan. Buyurtma yaratilmadi.' });
         }
+        if (payment_method !== 'INVOICE_B2B' && !paymentOptions().methods.includes(payment_method))
+            return res.status(400).json({ error: 'Bu to‘lov usuli hozir mavjud emas' });
         const product = await prisma.product.findUnique({ where: { id: String(product_id) }, include: { farmer: true } });
         if (!product || !product.is_active) {
             return res.status(404).json({ error: 'Mahsulot topilmadi yoki sotuvda mavjud emas' });
@@ -157,7 +159,7 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
         if (!Number.isSafeInteger(product_total_amount) || product_total_amount < 1 || product_total_amount > 2_147_483_647 - DELIVERY_FEE) {
             return res.status(400).json({ error: "Buyurtma summasi ruxsat etilgan chegaradan tashqarida" });
         }
-        const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
+        const platform_commission = payment_method === 'DIRECT_FARMER' ? 0 : Math.round(product_total_amount * COMMISSION_RATE);
         const farmer_payout = product_total_amount - platform_commission;
         const order = await prisma.$transaction(async (tx) => {
             // Atomik band qilish: poyga holatida (oversell) ikki kishiga bir xil qoldiq sotilmaydi
@@ -180,8 +182,8 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
                     total_paid: product_total_amount + DELIVERY_FEE,
                     platform_commission,
                     farmer_payout,
-                    courier_payout: COURIER_PAYOUT,
-                    platform_logistics_margin: LOGISTICS_MARGIN,
+                    courier_payout: payment_method === 'DIRECT_FARMER' ? DELIVERY_FEE : COURIER_PAYOUT,
+                    platform_logistics_margin: payment_method === 'DIRECT_FARMER' ? 0 : LOGISTICS_MARGIN,
                     payment_method,
                     status: 'PENDING_PAYMENT',
                     delivery_address,
@@ -210,13 +212,15 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
         if (cleanAddress.length < 5) {
             return res.status(400).json({ error: "Yetkazib berish manzilini to'liq kiriting" });
         }
-        const payMethod = METHODS.includes(payment_method) ? payment_method : 'CLICK';
+        const payMethod = METHODS.includes(payment_method) ? payment_method : (paymentOptions().methods[0] || 'CLICK');
         if (payMethod === 'INVOICE_B2B' && req.user.role !== 'BUYER_B2B') {
             return res.status(400).json({ error: 'Hisob-faktura orqali to‘lov faqat biznes hisoblar uchun' });
         }
         if (payMethod !== 'INVOICE_B2B' && !paymentOptions().methods.length) {
             return res.status(503).json({ error: 'Onlayn to‘lov hali ulanmagan. Buyurtma yaratilmadi.' });
         }
+        if (payMethod !== 'INVOICE_B2B' && !paymentOptions().methods.includes(payMethod))
+            return res.status(400).json({ error: 'Bu to‘lov usuli hozir mavjud emas' });
         // Har bir mahsulotni tekshirish
         const itemRequests = items.map((it) => ({
             product_id: typeof it?.product_id === 'string' ? it.product_id.trim() : '',
@@ -278,12 +282,12 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
                         throw new Error(`STOCK_${prod.title}`);
                     }
                     const product_total_amount = Math.round(item.quantity_kg * prod.price_per_kg);
-                    const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
+                    const platform_commission = payMethod === 'DIRECT_FARMER' ? 0 : Math.round(product_total_amount * COMMISSION_RATE);
                     const farmer_payout = product_total_amount - platform_commission;
                     // Each order is claimed, cancelled and delivered independently.
                     const delivery_fee = DELIVERY_FEE;
-                    const courier_payout = COURIER_PAYOUT;
-                    const platform_logistics_margin = LOGISTICS_MARGIN;
+                    const courier_payout = payMethod === 'DIRECT_FARMER' ? DELIVERY_FEE : COURIER_PAYOUT;
+                    const platform_logistics_margin = payMethod === 'DIRECT_FARMER' ? 0 : LOGISTICS_MARGIN;
                     const order = await tx.order.create({
                         data: {
                             buyer_id: buyerId,
@@ -335,7 +339,7 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
         }
         // Muddat tekshiruvi: 30 daqiqa (oddiy to'lov) yoki 72 soat (B2B hisob-faktura)
         const orderAgeMs = Date.now() - new Date(order.created_at).getTime();
-        const isExpired = order.payment_method === 'INVOICE_B2B'
+        const isExpired = ['INVOICE_B2B', 'DIRECT_FARMER'].includes(order.payment_method)
             ? orderAgeMs > INVOICE_TIMEOUT_HOURS * 3600000
             : orderAgeMs > PAYMENT_TIMEOUT_MIN * 60000;
         const gatewayActive = order.payme_transaction?.state === 1 && order.payme_transaction.expires_at.getTime() > Date.now();
@@ -348,6 +352,10 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
                 }
             });
             return res.status(400).json({ error: "Buyurtmani to'lash muddati tugagan (rezerv bekor qilindi). Iltimos, qaytadan buyurtma bering." });
+        }
+        if (order.payment_method === 'DIRECT_FARMER') {
+            return res.json({ order: { ...order, payme_transaction: undefined }, pending_direct: true,
+                message: 'Buyurtma yaratildi. To‘lovni fermer bilan kelishing; pul tushganini fermer tasdiqlaydi. Platforma pul qabul qilmaydi.' });
         }
         // B2B hisob-faktura: admin bank o'tkazmasini tasdiqlagach escrow'ga tushadi
         if (order.payment_method === 'INVOICE_B2B') {
@@ -379,6 +387,32 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req,
             return res.status(409).json({ error: "Buyurtma holati o'zgargan, sahifani yangilang" });
         console.error('Pay order error:', err);
         return res.status(500).json({ error: "To'lovda xatolik yuz berdi" });
+    }
+});
+// A direct bank/card payment is confirmed only by the receiving farmer.
+router.post('/:id/confirm-direct-payment', authenticateToken, requireRole(['FARMER']), async (req, res) => {
+    try {
+        if (req.user.kyc_status !== 'APPROVED')
+            return res.status(403).json({ error: 'Fermer profili tasdiqlanishi kerak' });
+        const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+        if (!order || order.farmer_id !== req.user.id)
+            return res.status(404).json({ error: 'Buyurtma topilmadi' });
+        if (order.payment_method !== 'DIRECT_FARMER')
+            return res.status(400).json({ error: 'Bu buyurtmada boshqa to‘lov usuli tanlangan' });
+        if (req.body?.received !== true || req.body?.received_amount !== order.total_paid)
+            return res.status(400).json({ error: 'To‘liq summa kelib tushganini tasdiqlang' });
+        await prisma.$transaction(async (tx) => {
+            const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT', created_at: { gte: new Date(Date.now() - INVOICE_TIMEOUT_HOURS * 3600000) } }, data: { status: 'CONFIRMED_BY_FARMER' } });
+            if (r.count !== 1)
+                throw new Error('STATE');
+            await tx.transaction.create({ data: { order_id: order.id, user_id: order.farmer_id, type: 'DIRECT_PAYMENT_RECEIVED', amount: order.total_paid } });
+        });
+        res.json({ message: 'Fermer to‘lovni olganini tasdiqladi. Buyurtma yetkazishga tayyor.' });
+    }
+    catch (err) {
+        if (err?.message === 'STATE')
+            return res.status(409).json({ error: 'Buyurtma holati o‘zgargan yoki muddati tugagan' });
+        res.status(500).json({ error: 'To‘lov tasdig‘ini saqlashda xatolik' });
     }
 });
 // 5. To'lanmagan buyurtmani bekor qilish (qoldiq qaytadi)
@@ -488,7 +522,7 @@ router.post('/:id/complete', authenticateToken, requireRole(BUYER_ROLES), async 
             await settleOrder(tx, order, 0);
             return tx.order.findUnique({ where: { id: order.id } });
         });
-        return res.json({ message: "Buyurtma yakunlandi! Mablag'lar fermer va kuryerga o'tkazildi.", order: completed });
+        return res.json({ message: order.payment_method === 'DIRECT_FARMER' ? 'Yetkazish yakunlandi. Hisob-kitob fermer bilan qo‘lda bajariladi.' : "Buyurtma yakunlandi! Mablag'lar fermer va kuryerga o'tkazildi.", order: completed });
     }
     catch (err) {
         if (err?.message === 'STATE')

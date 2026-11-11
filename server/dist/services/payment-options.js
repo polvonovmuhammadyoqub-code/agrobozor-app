@@ -1,5 +1,5 @@
 export function paymentMode() {
-    return process.env.PAYMENT_MODE || 'disabled';
+    return process.env.PAYMENT_MODE || 'direct';
 }
 export function paymeConfig() {
     const merchant = process.env.PAYME_MERCHANT_ID || '';
@@ -29,18 +29,22 @@ export function paymentOptions() {
     const c = paymeConfig();
     return {
         mode,
-        methods: mode === 'mock'
-            ? ['CLICK', 'PAYME', 'UZCARD', 'HUMO']
-            : mode === 'payme' && c.ready
-                ? ['PAYME']
-                : [],
-        message: mode === 'mock'
-            ? 'Sinov rejimi: haqiqiy pul yechilmaydi.'
-            : mode === 'payme' && c.ready
-                ? c.sandbox
-                    ? 'Payme sinov muhiti: haqiqiy pul yechilmaydi.'
-                    : 'To‘lov Payme sahifasida bajariladi. Tasdiq kelmaguncha buyurtma to‘lanmagan hisoblanadi.'
-                : 'Onlayn to‘lov hali ulanmagan. Hozir haqiqiy pul qabul qilinmaydi.',
+        methods: mode === 'direct'
+            ? ['DIRECT_FARMER']
+            : mode === 'mock'
+                ? ['CLICK', 'PAYME', 'UZCARD', 'HUMO']
+                : mode === 'payme' && c.ready
+                    ? ['PAYME']
+                    : [],
+        message: mode === 'direct'
+            ? 'To‘lovni bevosita fermerga qilasiz. Pul tushganini fermer tasdiqlaydi. Yetkazish haqini fermer kuryer bilan qo‘lda hisoblashadi; platforma pul qabul qilmaydi.'
+            : mode === 'mock'
+                ? 'Sinov rejimi: haqiqiy pul yechilmaydi.'
+                : mode === 'payme' && c.ready
+                    ? c.sandbox
+                        ? 'Payme sinov muhiti: haqiqiy pul yechilmaydi.'
+                        : 'To‘lov Payme sahifasida bajariladi. Tasdiq kelmaguncha buyurtma to‘lanmagan hisoblanadi.'
+                    : 'Onlayn to‘lov hali ulanmagan. Hozir haqiqiy pul qabul qilinmaydi.',
     };
 }
 export function paymeCheckout(order) {

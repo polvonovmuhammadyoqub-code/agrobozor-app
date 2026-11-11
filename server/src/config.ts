@@ -22,8 +22,8 @@ export const AUTO_APPROVE_KYC = process.env.AUTO_APPROVE_KYC === 'true';
 // Emailga kod yuborilmasa javobda kodni qaytarish (faqat dev/staging uchun!)
 export const ALLOW_DEV_CODES = process.env.ALLOW_DEV_CODES === 'true' || !isProd;
 
-// 'disabled' (default) | 'mock' (explicit test only) | 'payme'
-export const PAYMENT_MODE = process.env.PAYMENT_MODE || 'disabled';
+// 'direct' (farmer receives money outside platform) | 'disabled' | 'mock' | 'payme'
+export const PAYMENT_MODE = process.env.PAYMENT_MODE || 'direct';
 
 export const DELIVERY_FEE = 15000;
 export const COURIER_PAYOUT = 12000;

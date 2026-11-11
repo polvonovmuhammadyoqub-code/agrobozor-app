@@ -78,7 +78,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="text-xl font-extrabold tracking-tight">
                 Agro<span className="text-agro-amber">Bozor</span>
               </div>
-              <div className="text-[11px] text-emerald-200">Xavfsiz Escrow Agro-Savdo</div>
+              <div className="text-[11px] text-emerald-200">Fermer, xaridor va logist bir joyda</div>
             </div>
           </div>
           <h2 className="text-lg font-bold mt-2">Tizimga kirish</h2>
@@ -164,7 +164,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {/* Xavfsizlik eslatmasi */}
           <div className="flex items-center space-x-2 p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-[11px] text-emerald-800">
             <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>Mablag'lar va shaxsiy ma'lumotlar 100% himoyalangan</span>
+            <span>To‘lov usuli va buyurtma holatini ilovada kuzating</span>
           </div>
 
           {/* Ro'yxatdan o'tish havolasi */}

@@ -1,7 +1,7 @@
 export type Role = 'FARMER' | 'BUYER_B2C' | 'BUYER_B2B' | 'COURIER' | 'ADMIN';
 export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type Category = 'MEVALAR' | 'SABZAVOTLAR' | 'POLIZ' | 'SUT_GOSHT' | 'DON';
-export type PaymentMethod = 'CLICK' | 'PAYME' | 'UZCARD' | 'HUMO' | 'INVOICE_B2B';
+export type PaymentMethod = 'CLICK' | 'PAYME' | 'UZCARD' | 'HUMO' | 'INVOICE_B2B' | 'DIRECT_FARMER';
 export type OrderStatus =
   | 'PENDING_PAYMENT'
   | 'CANCELLED'

@@ -155,10 +155,11 @@ export const api = {
         body: JSON.stringify(body),
       }),
     pay: (id: string, payment_method?: string) =>
-      request<{ order: Order; pending_invoice?: boolean; pending_payment?: boolean; checkout_url?: string; is_demo?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
+      request<{ order: Order; pending_invoice?: boolean; pending_direct?: boolean; pending_payment?: boolean; checkout_url?: string; is_demo?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
         method: 'POST',
         body: JSON.stringify({ payment_method }),
       }),
+    confirmDirectPayment: (id: string, amount: number) => request<{message:string}>(`/orders/${id}/confirm-direct-payment`, {method:'POST',body:JSON.stringify({received:true,received_amount:amount})}),
     cancel: (id: string) => request<{ message: string }>(`/orders/${id}/cancel`, { method: 'POST' }),
     reject: (id: string) => request<{ message: string }>(`/orders/${id}/reject`, { method: 'POST' }),
     updateStatus: (id: string, status: string) =>

@@ -38,7 +38,7 @@ export function usePaymentOptions(open: boolean, business: boolean) {
     loading,
     methods: [
       ...data.methods,
-      ...(business ? ['INVOICE_B2B'] : []),
+      ...(business && data.mode !== 'direct' ? ['INVOICE_B2B'] : []),
     ] as PaymentMethod[],
   };
 }
@@ -73,9 +73,11 @@ export function PaymentSelector({
               onChange={() => onChange(m)}
               className="accent-emerald-700"
             />
-            {m === 'INVOICE_B2B'
-              ? 'Bank hisob-fakturasi'
-              : `${m}${options.mode === 'mock' ? ' (sinov)' : ''}`}
+            {m === 'DIRECT_FARMER'
+              ? 'Bevosita fermerga'
+              : m === 'INVOICE_B2B'
+                ? 'Bank hisob-fakturasi'
+                : `${m}${options.mode === 'mock' ? ' (sinov)' : ''}`}
           </label>
         ))}
       </div>

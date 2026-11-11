@@ -372,7 +372,7 @@ test('price recommendations separate commodities, regions, processing and unappr
 });
 
 test('unconfigured online payment rejects checkout before reserving stock', options, async () => {
-  const mode = process.env.PAYMENT_MODE;delete process.env.PAYMENT_MODE;
+  const mode = process.env.PAYMENT_MODE;process.env.PAYMENT_MODE='disabled';
   const p = await makeProduct(5);
   try {
     const options = await request('/payments/options',undefined,undefined,'GET');
@@ -437,4 +437,48 @@ test('Payme expiry and buyer cancellation release a reservation once and block l
       assert.equal((await rpc('CheckTransaction',{id})).result.state,-1);
     }
   }finally{for(const [k,v]of Object.entries(saved))if(v===undefined)delete process.env[k];else process.env[k]=v;}
+});
+
+test('direct farmer payments require the receiving owner and never create platform balances', options, async () => {
+  const old = process.env.PAYMENT_MODE;delete process.env.PAYMENT_MODE;
+  try {
+    const options=await request('/payments/options',undefined,undefined,'GET');
+    assert.equal(options.data.mode,'direct');assert.deepEqual(options.data.methods,['DIRECT_FARMER']);assert.equal(typeof options.data.message,'string');
+    const p=await makeProduct(10);const before=await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,wallet_available:true,wallet_escrow:true}});
+    const created=await createOrder(p,1,'BUYER_B2C','DIRECT_FARMER');assert.equal(created.status,201);
+    const o=created.data;assert.equal(o.platform_commission,0);assert.equal(o.courier_payout,15000);assert.equal(o.platform_logistics_margin,0);
+    const info=await request(`/orders/${o.id}/pay`,'BUYER_B2C',{});assert.equal(info.data.pending_direct,true);assert.equal(info.data.order.status,'PENDING_PAYMENT');
+    const path=`/orders/${o.id}/confirm-direct-payment`;const body={received:true,received_amount:o.total_paid};
+    assert.equal((await request(path,'BUYER_B2C',body)).status,403);
+    assert.equal((await request(path,'ADMIN',body)).status,403);
+    assert.equal((await request(`/admin/orders/${o.id}/confirm-payment`,'ADMIN',{})).status,400);
+    assert.equal((await request(path,'FARMER',{...body,received_amount:o.total_paid-1})).status,400);
+    const results=await Promise.all([request(path,'FARMER',body),request(path,'FARMER',body)]);
+    assert.equal(results.filter(r=>r.status===200).length,1);assert.equal(results.filter(r=>r.status===409).length,1);
+    assert.equal(await prisma.transaction.count({where:{order_id:o.id,type:'DIRECT_PAYMENT_RECEIVED'}}),1);
+    assert.equal((await prisma.order.findUnique({where:{id:o.id}})).status,'CONFIRMED_BY_FARMER');
+    assert.equal((await request('/disputes','BUYER_B2C',{order_id:o.id,reason:'Qaytarishni so‘rayman test holati'})).status,400);
+    assert.equal((await request(`/orders/${o.id}/status`,'COURIER',{status:'IN_TRANSIT'},'PATCH')).status,200);
+    assert.equal((await request(`/orders/${o.id}/status`,'COURIER',{status:'DELIVERED'},'PATCH')).status,200);
+    const completed=await request(`/orders/${o.id}/complete`,'BUYER_B2C',{});assert.equal(completed.status,200);
+    assert.deepEqual(await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,wallet_available:true,wallet_escrow:true},orderBy:{id:'asc'}}),before.sort((a:any,b:any)=>a.id.localeCompare(b.id)));
+    assert.equal(await prisma.transaction.count({where:{order_id:o.id,type:{in:['ESCROW_HOLD','ESCROW_RELEASE_FARMER','COURIER_FEE','PLATFORM_COMMISSION','REFUND']}}}),0);
+    assert.equal((await request(`/products/${p.id}/analytics`,'FARMER',undefined,'GET')).data.earned,o.product_total_amount);
+  }finally{if(old===undefined)delete process.env.PAYMENT_MODE;else process.env.PAYMENT_MODE=old;}
+});
+
+test('manual cart orders stay independent and expired direct payments cannot be confirmed', options, async () => {
+  const old=process.env.PAYMENT_MODE;process.env.PAYMENT_MODE='direct';
+  try{
+    const p=await makeProduct(5);const second=await makeProduct(5);
+    const cart=await request('/orders/checkout','BUYER_B2C',{items:[{product_id:p.id,quantity_kg:1},{product_id:second.id,quantity_kg:1}],delivery_address:'Toshkent test address',payment_method:'DIRECT_FARMER'});
+    assert.equal(cart.status,201);assert.equal(cart.data.grand_total,50000);
+    const o=cart.data.orders[0];
+    await prisma.order.update({where:{id:o.id},data:{created_at:new Date(Date.now()-73*3600000)}});
+    assert.equal((await request(`/orders/${o.id}/confirm-direct-payment`,'FARMER',{received:true,received_amount:o.total_paid})).status,409);
+    const {releaseExpiredOrders}=await import('../src/routes/orders.js');await releaseExpiredOrders();
+    assert.equal((await prisma.order.findUnique({where:{id:o.id}})).status,'CANCELLED');
+    assert.equal((await prisma.order.findUnique({where:{id:cart.data.orders[1].id}})).status,'PENDING_PAYMENT');
+    assert.equal((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg,5);
+  }finally{if(old===undefined)delete process.env.PAYMENT_MODE;else process.env.PAYMENT_MODE=old;}
 });

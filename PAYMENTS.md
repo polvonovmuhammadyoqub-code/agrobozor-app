@@ -2,6 +2,9 @@
 
 ## Hozirgi holat
 
+Standart rejim endi `direct`: fermerga bevosita qo‘lda to‘lov.
+[Qo‘llanma](MANUAL_PAYMENTS.md). Quyidagi bo‘lim Payme rejimiga tegishli.
+
 Merchant shartnomasi va provayder kalitlari ushbu ishda berilmagan. Adapter
 rasmiy Merchant API hujjati bo‘yicha yozildi va haqiqiy PostgreSQL bilan,
 imzolangan Basic auth callback’larini lokal yuborish orqali tekshirildi.

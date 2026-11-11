@@ -7,6 +7,8 @@ async function platformUserId(tx) {
 }
 /** To'lov escrow'ga tushganda: pul platformada, fermer escrow balansida ko'rinadi. */
 export async function holdInEscrow(tx, order) {
+    if (order.payment_method === 'DIRECT_FARMER')
+        throw new Error('Direct payments never enter platform escrow');
     await tx.user.update({
         where: { id: order.farmer_id },
         data: { wallet_escrow: { increment: order.farmer_payout } },
@@ -22,6 +24,11 @@ export async function holdInEscrow(tx, order) {
  * Yetkazish haqi faqat kuryer biriktirilmagan va to'liq qaytarishda qaytariladi.
  */
 export async function settleOrder(tx, order, productRefund) {
+    if (order.payment_method === 'DIRECT_FARMER') {
+        if (productRefund !== 0)
+            throw new Error('Direct refunds must be arranged with the farmer');
+        return { farmerGets: 0, buyerGets: 0, courierGets: 0, platformGets: 0 };
+    }
     const pt = order.product_total_amount;
     const r = Math.min(Math.max(Math.round(productRefund), 0), pt);
     const farmerGets = pt > 0 ? Math.round(order.farmer_payout * ((pt - r) / pt)) : 0;

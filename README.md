@@ -18,14 +18,16 @@ Barcha hisob-kitob `server/src/services/settlement.ts` ichida; har holatda
 
 ## To‘lov holati
 
-Standart production rejimi `disabled`: merchant sozlanmaguncha oddiy onlayn
-checkout yopiq va ombor band qilinmaydi. Lokal test uchun `PAYMENT_MODE=mock`
-berish mumkin; bunda haqiqiy pul harakatlanmaydi va UI buni aniq ko‘rsatadi.
-Payme Merchant API adapteri va checkout yo‘naltirishi qo‘shilgan. Jonli to‘lov
-uchun merchant shartnomasi, kalitlar va Payme sandbox tekshiruvi kerak.
-Click uchun haqiqiy adapter hali mavjud emas; Click faqat mock rejimida.
-B2B `INVOICE_B2B` to‘lovi bank o‘tkazmasidan keyin admin tomonidan tasdiqlanadi.
-To‘liq sozlash: [PAYMENTS.md](PAYMENTS.md).
+Standart rejim `direct`: xaridor fermerga bevosita to‘laydi, fermer pul tushganini
+tasdiqlaydi. Platforma pulni qabul qilmaydi, escrow va hamyonlarga avtomatik
+kredit yo‘q. Yetkazish haqini ham fermer kuryer bilan qo‘lda hisoblashadi.
+Qo‘llanma: [MANUAL_PAYMENTS.md](MANUAL_PAYMENTS.md).
+
+`PAYMENT_MODE=disabled` checkoutni yopadi, `mock` faqat aniq yoqilgan test rejimi.
+Payme Merchant API adapteri qo‘shilgan; jonli ishlash uchun merchant shartnomasi,
+kalitlar va rasmiy sandbox tekshiruvi kerak. Click faqat mock rejimida.
+B2B bank hisob-fakturasi eski integratsiyalar uchun alohida mavjud.
+Payme sozlash: [PAYMENTS.md](PAYMENTS.md).
 
 ## Ishga tushirish
 
