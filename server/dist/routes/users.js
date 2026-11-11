@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../db.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { isValidDistrict } from '../constants/districts.js';
 import { cleanText, positiveInt } from '../utils/validate.js';
 const router = Router();
 const PREMIUM_FEE = 50000;
@@ -119,6 +120,41 @@ router.get('/withdrawals', authenticateToken, async (req, res) => {
     }
     catch {
         return res.status(500).json({ error: "Pul yechish so'rovlarini yuklashda xatolik" });
+    }
+});
+// Profil ma'lumotlarini (tuman, hudud, ferma nomi) yangilash
+router.patch('/me', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const b = req.body || {};
+        const data = {};
+        if (b.full_name !== undefined) {
+            const name = cleanText(b.full_name, 120);
+            if (name.length >= 2)
+                data.full_name = name;
+        }
+        if (b.region !== undefined) {
+            data.region = cleanText(b.region, 120);
+        }
+        if (b.district !== undefined) {
+            const d = cleanText(b.district, 120);
+            if (d && !isValidDistrict(d))
+                return res.status(400).json({ error: 'Tuman noto‘g‘ri' });
+            data.district = d || null;
+        }
+        if (b.farm_or_company_name !== undefined) {
+            data.farm_or_company_name = cleanText(b.farm_or_company_name, 160) || null;
+        }
+        const updated = await prisma.user.update({
+            where: { id: userId },
+            data,
+        });
+        const { password_hash: _, ...safeUser } = updated;
+        return res.json({ message: "Profil yangilandi", user: safeUser });
+    }
+    catch (err) {
+        console.error('Update profile error:', err);
+        return res.status(500).json({ error: "Profilni yangilashda xatolik" });
     }
 });
 export default router;

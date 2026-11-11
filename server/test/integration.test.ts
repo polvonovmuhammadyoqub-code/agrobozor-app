@@ -20,6 +20,8 @@ before(async () => {
   process.env.DATABASE_URL = testUrl;
   process.env.DIRECT_URL = testUrl;
   process.env.NODE_ENV = 'test';
+  process.env.SUPABASE_URL='https://storage.test.invalid';
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.PAYMENT_MODE = 'mock';
   process.env.JWT_SECRET = 'integration-test-secret-01234567890123456789';
   ({ default: prisma } = await import('../src/db.js'));
@@ -43,6 +45,8 @@ after(async () => {
   if (!testUrl || !prisma) return;
   if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
   const orders = { buyer_id: { in: ids } };
+  await prisma.auditLog.deleteMany({where:{OR:[{actor_id:{in:ids}},{order:orders}]}});
+  await prisma.notification.deleteMany({where:{OR:[{user_id:{in:ids}},{order:orders}]}});
   await prisma.review.deleteMany({ where: { reviewer_id: { in: ids } } });
   await prisma.dispute.deleteMany({ where: { buyer_id: { in: ids } } });
   await prisma.transaction.deleteMany({ where: { OR: [{ user_id: { in: ids } }, { order: orders }] } });
@@ -155,7 +159,7 @@ test('delivery lifecycle, courier privacy, escrow conservation and duplicate rev
   assert.equal(publicOrder.delivery_address, undefined); assert.equal(publicOrder.buyer.phone, undefined);
   assert.equal((await request(`/orders/${id}/status`, 'COURIER', { status: 'IN_TRANSIT' }, 'PATCH')).status, 200);
   assert.equal((await request(`/orders/${id}`, 'COURIER', undefined, 'GET')).data.delivery_address, 'Toshkent, Test kocha 10');
-  assert.equal((await request(`/orders/${id}/status`, 'COURIER', { status: 'DELIVERED' }, 'PATCH')).status, 200);
+  assert.equal((await request(`/orders/${id}/status`, 'COURIER', { status: 'DELIVERED', pin:(await request(`/orders/${id}`,'BUYER_B2C',undefined,'GET')).data.delivery_pin }, 'PATCH')).status, 200);
   const results = await Promise.all([request(`/orders/${id}/complete`, 'BUYER_B2C', {}), request(`/orders/${id}/complete`, 'BUYER_B2C', {})]);
   assert.equal(results.filter(r => r.status === 200).length, 1);
   const credits = await prisma.transaction.aggregate({ where: { order_id: id, type: { not: 'ESCROW_HOLD' } }, _sum: { amount: true } });
@@ -444,6 +448,9 @@ test('direct farmer payments require the receiving owner and never create platfo
   try {
     const options=await request('/payments/options',undefined,undefined,'GET');
     assert.equal(options.data.mode,'direct');assert.deepEqual(options.data.methods,['DIRECT_FARMER']);assert.equal(typeof options.data.message,'string');
+    const bypass=await makeProduct(2);
+    assert.equal((await createOrder(bypass,1,'BUYER_B2B','INVOICE_B2B')).status,400);
+    assert.equal((await request('/orders/checkout','BUYER_B2B',{items:[{product_id:bypass.id,quantity_kg:1}],payment_method:'INVOICE_B2B',delivery_address:'Toshkent test manzil'})).status,400);
     const p=await makeProduct(10);const before=await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,wallet_available:true,wallet_escrow:true}});
     const created=await createOrder(p,1,'BUYER_B2C','DIRECT_FARMER');assert.equal(created.status,201);
     const o=created.data;assert.equal(o.platform_commission,0);assert.equal(o.courier_payout,15000);assert.equal(o.platform_logistics_margin,0);
@@ -459,7 +466,7 @@ test('direct farmer payments require the receiving owner and never create platfo
     assert.equal((await prisma.order.findUnique({where:{id:o.id}})).status,'CONFIRMED_BY_FARMER');
     assert.equal((await request('/disputes','BUYER_B2C',{order_id:o.id,reason:'Qaytarishni so‘rayman test holati'})).status,400);
     assert.equal((await request(`/orders/${o.id}/status`,'COURIER',{status:'IN_TRANSIT'},'PATCH')).status,200);
-    assert.equal((await request(`/orders/${o.id}/status`,'COURIER',{status:'DELIVERED'},'PATCH')).status,200);
+    assert.equal((await request(`/orders/${o.id}/status`,'COURIER',{status:'DELIVERED',pin:(await request(`/orders/${o.id}`,'BUYER_B2C',undefined,'GET')).data.delivery_pin},'PATCH')).status,200);
     const completed=await request(`/orders/${o.id}/complete`,'BUYER_B2C',{});assert.equal(completed.status,200);
     assert.deepEqual(await prisma.user.findMany({where:{id:{in:ids}},select:{id:true,wallet_available:true,wallet_escrow:true},orderBy:{id:'asc'}}),before.sort((a:any,b:any)=>a.id.localeCompare(b.id)));
     assert.equal(await prisma.transaction.count({where:{order_id:o.id,type:{in:['ESCROW_HOLD','ESCROW_RELEASE_FARMER','COURIER_FEE','PLATFORM_COMMISSION','REFUND']}}}),0);
@@ -481,4 +488,80 @@ test('manual cart orders stay independent and expired direct payments cannot be 
     assert.equal((await prisma.order.findUnique({where:{id:cart.data.orders[1].id}})).status,'PENDING_PAYMENT');
     assert.equal((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg,5);
   }finally{if(old===undefined)delete process.env.PAYMENT_MODE;else process.env.PAYMENT_MODE=old;}
+});
+
+test('units, immutable prices and pickup/delivery district snapshots stay consistent',options,async()=>{
+ const body={title:'Tuxum',category:'SUT_GOSHT',unit:'DONA',price_per_kg:1500,available_quantity_kg:20,min_order_kg:1,pickup_district:'Parkent',pickup_address:'Original farm',pickup_window:'09:00–12:00'};
+ assert.equal((await request('/products','FARMER',{...body,available_quantity_kg:2.5})).status,400);
+ assert.equal((await request('/products','FARMER',{...body,pickup_district:'unknown'})).status,400);
+ const product=(await request('/products','FARMER',body)).data;
+ assert.equal(product.unit,'DONA');assert.ok(product.image_urls.length);
+ assert.equal((await createOrder(product,.5)).status,400);
+ const created=await request('/orders','BUYER_B2C',{product_id:product.id,quantity_kg:2,delivery_district:'Chilonzor',delivery_address:'Toshkent street 20',payment_method:'CLICK'});
+ assert.equal(created.status,201);const id=created.data.id;
+ assert.equal(created.data.unit,'DONA');assert.equal(created.data.product_total_amount,3000);assert.equal(created.data.pickup_address,'Original farm');
+ assert.equal((await request(`/products/${product.id}`,'FARMER',{unit:'KG'},'PUT')).status,409);
+ assert.equal((await request(`/products/${product.id}`,'FARMER',{title:'Changed title',price_per_kg:2500,pickup_address:'Changed farm'},'PUT')).status,200);
+ const invoice=(await request(`/orders/${id}/invoice`,'BUYER_B2C',undefined,'GET')).data;
+ assert.equal(invoice.items[0].unit,'DONA');assert.equal(invoice.items[0].price_per_kg,1500);assert.equal(invoice.items[0].name,'Tuxum');
+ const saved=(await request(`/orders/${id}`,'BUYER_B2C',undefined,'GET')).data;
+ assert.equal(saved.pickup_address,'Original farm');assert.equal(saved.delivery_district,'Chilonzor');
+ const invalid=await request('/orders','BUYER_B2C',{product_id:product.id,quantity_kg:1,delivery_district:'unknown',delivery_address:'Full address',payment_method:'CLICK'});
+ assert.equal(invalid.status,400);
+});
+
+test('fractional stock does not strand the final unit and price advice never mixes units',options,async()=>{
+ const p=await makeProduct(.3);await prisma.product.update({where:{id:p.id},data:{min_order_kg:.1}});
+ const a=await createOrder({...p,min_order_kg:.1},.1);assert.equal(a.status,201);
+ const b=await createOrder({...p,min_order_kg:.1},.2);assert.equal(b.status,201);
+ assert.ok(Math.abs((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg)<1e-8);
+ assert.equal((await createOrder({...p,min_order_kg:.1},.1)).status,400);
+ await request(`/orders/${a.data.id}/cancel`,'BUYER_B2C',{});await request(`/orders/${b.data.id}/cancel`,'BUYER_B2C',{});
+ assert.ok(Math.abs((await prisma.product.findUnique({where:{id:p.id}})).available_quantity_kg-.3)<1e-8);
+ const milk=await makeProduct();await prisma.product.update({where:{id:milk.id},data:{title:'Sut',category:'SUT_GOSHT',unit:'LITR',price_per_kg:14000,region:'Units test'}});
+ const other=await makeProduct();await prisma.product.update({where:{id:other.id},data:{title:'Sut',category:'SUT_GOSHT',unit:'BANKA',price_per_kg:42000,region:'Units test'}});
+ const price=(await request('/products/price-recommendation?category=SUT_GOSHT&title=Sut&region=Units%20test&unit=LITR',undefined,undefined,'GET')).data;
+ assert.equal(price.recommended_price,14000);assert.equal(price.sample_count,1);
+});
+
+test('PIN is buyer-only, concurrent wrong guesses cap at five, and audited admin recovery works',options,async()=>{
+ const order=(await createOrder()).data;const id=order.id;
+ await request(`/orders/${id}/pay`,'BUYER_B2C',{});
+ await request(`/orders/${id}/status`,'FARMER',{status:'CONFIRMED_BY_FARMER'},'PATCH');
+ const buyer=(await request(`/orders/${id}`,'BUYER_B2C',undefined,'GET')).data;
+ assert.match(buyer.delivery_pin,/^\d{4}$/);
+ for(const role of ['FARMER','ADMIN'])assert.equal((await request(`/orders/${id}`,role,undefined,'GET')).data.delivery_pin,undefined);
+ await request(`/orders/${id}/status`,'COURIER',{status:'IN_TRANSIT'},'PATCH');
+ assert.equal((await request(`/orders/${id}`,'COURIER',undefined,'GET')).data.delivery_pin,undefined);
+ assert.equal((await request(`/orders/${id}/status`,'COURIER',{status:'DELIVERED',pin:''},'PATCH')).status,400);
+ const wrong=buyer.delivery_pin==='0000'?'1111':'0000';
+ await Promise.all(Array.from({length:8},()=>request(`/orders/${id}/status`,'COURIER',{status:'DELIVERED',pin:wrong},'PATCH')));
+ assert.equal((await prisma.order.findUnique({where:{id}})).delivery_pin_attempts,5);
+ assert.equal((await request(`/orders/${id}/status`,'COURIER',{status:'DELIVERED',pin:buyer.delivery_pin},'PATCH')).status,409);
+ assert.equal((await request(`/admin/orders/${id}/reset-pin`,'BUYER_B2C',{reason:'Testing recovery'})).status,403);
+ assert.equal((await request(`/admin/orders/${id}/reset-pin`,'ADMIN',{reason:'Buyer requested recovery'})).status,200);
+ assert.equal(await prisma.auditLog.count({where:{order_id:id,action:'ORDER_RESET_PIN'}}),1);
+ const fresh=(await request(`/orders/${id}`,'BUYER_B2C',undefined,'GET')).data;
+ assert.notEqual(fresh.delivery_pin,buyer.delivery_pin);
+ const delivered=await request(`/orders/${id}/status`,'COURIER',{status:'DELIVERED',pin:fresh.delivery_pin},'PATCH');assert.equal(delivered.status,200);assert.equal(delivered.data.delivery_pin,undefined);
+ const second=(await createOrder()).data;
+ await request(`/orders/${second.id}/pay`,'BUYER_B2C',{});await request(`/orders/${second.id}/status`,'FARMER',{status:'CONFIRMED_BY_FARMER'},'PATCH');await request(`/orders/${second.id}/status`,'COURIER',{status:'IN_TRANSIT'},'PATCH');
+ assert.equal((await request(`/admin/orders/${second.id}/deliver-override`,'ADMIN',{reason:'no'})).status,400);
+ assert.equal((await request(`/admin/orders/${second.id}/deliver-override`,'ADMIN',{reason:'Buyer confirms goods received by telephone'})).status,200);
+ assert.equal(await prisma.auditLog.count({where:{order_id:second.id,action:'ORDER_DELIVER_OVERRIDE'}}),1);
+});
+
+test('uploads restrict roles, size, MIME and owner URLs without contacting real storage',options,async()=>{
+ const upload={bucket:'product-images',content_type:'image/jpeg',size_bytes:100};
+ assert.equal((await request('/uploads/sign',undefined,upload)).status,401);
+ assert.equal((await request('/uploads/sign','BUYER_B2C',upload)).status,403);
+ assert.equal((await request('/uploads/sign','FARMER',{...upload,content_type:'image/svg+xml'})).status,400);
+ assert.equal((await request('/uploads/sign','FARMER',{...upload,size_bytes:6*1024*1024})).status,400);
+ assert.equal((await request('/uploads/sign','FARMER',upload)).status,503);
+ const body={title:'Uploaded apples',category:'MEVALAR',price_per_kg:10000,available_quantity_kg:10,min_order_kg:1};
+ assert.equal((await request('/products','FARMER',{...body,image_urls:['https://other.example.com/photo.jpg']})).status,400);
+ const own=`https://storage.test.invalid/storage/v1/object/public/product-images/${users.FARMER.id}/${randomUUID()}.jpg`;
+ assert.equal((await request('/products','FARMER',{...body,image_urls:[own]})).status,201);
+ assert.equal((await request('/products','FARMER',{...body,image_urls:[own.replace('https:','http:')]})).status,400);
+ assert.equal((await request('/products','FARMER',{...body,image_urls:[own.replace(users.FARMER.id,users.BUYER_B2C.id)]})).status,400);
 });

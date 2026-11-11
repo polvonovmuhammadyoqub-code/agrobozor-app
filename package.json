@@ -17,10 +17,14 @@
     "db:push": "npm run prisma:push --workspace server",
     "create-admin": "npm run create-admin --prefix server",
     "postinstall": "prisma generate --schema server/prisma/schema.prisma",
-    "test": "npm run test --workspace server"
+    "test": "npm run test --workspace server",
+    "db:migrate": "node scripts/database.mjs migrate",
+    "db:baseline": "node scripts/database.mjs baseline",
+    "db:status": "node scripts/database.mjs status"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@supabase/supabase-js": "^2.119.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -39,5 +43,8 @@
     "uzbekistan"
   ],
   "author": "AgroBozor Team",
-  "license": "ISC"
+  "license": "ISC",
+  "engines": {
+    "node": ">=22"
+  }
 }

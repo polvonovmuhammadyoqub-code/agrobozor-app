@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import { useEffect, useState } from 'react';
 import {
   MapPin,
@@ -85,7 +86,8 @@ export function ProductDetails({
         </div>
       ) : (
         <>
-          <img
+          {!!product?.image_urls?.length && <div className="flex gap-2 overflow-x-auto">{product.image_urls.map(url=><a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={product.title} className="w-24 h-24 object-cover rounded-xl shrink-0"/></a>)}</div>}
+      <img
             src={product.image_url}
             alt={product.title}
             className="w-full aspect-[4/3] object-cover rounded-2xl bg-gray-100"
@@ -103,18 +105,18 @@ export function ProductDetails({
             <p className="text-2xl text-agro-green font-black mt-3">
               {product.price_per_kg.toLocaleString()}{' '}
               <span className="text-sm font-normal text-gray-500">
-                so‘m / kg
+                so‘m / {formatUnitName(product.unit)}
               </span>
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-50 rounded-2xl p-4 text-sm">
               <p className="text-gray-500 mb-1">Mavjud</p>
-              <strong>{product.available_quantity_kg} kg</strong>
+              <strong>{formatQty(product.available_quantity_kg,product.unit)}</strong>
             </div>
             <div className="bg-gray-50 rounded-2xl p-4 text-sm">
               <p className="text-gray-500 mb-1">Eng kam buyurtma</p>
-              <strong>{product.min_order_kg} kg</strong>
+              <strong>{formatQty(product.min_order_kg,product.unit)}</strong>
             </div>
           </div>
           <p className="text-sm text-gray-500 flex items-center gap-2">

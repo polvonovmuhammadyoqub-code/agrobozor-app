@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import { useState } from 'react';
 import { Product } from '../types';
 import { api } from '../lib/api';
@@ -53,7 +54,7 @@ export function EditProductModal({
           />
         </label>
         <label className="block text-sm font-semibold">
-          Narx (so‘m / kg)
+          Narx (so‘m / {formatUnitName(product.unit)})
           <input
             value={price}
             onChange={(e) => setPrice(e.target.value)}
@@ -67,7 +68,7 @@ export function EditProductModal({
           />
         </label>
         <label className="block text-sm font-semibold">
-          Ombordagi qoldiq (kg)
+          Ombordagi qoldiq ({formatUnitName(product.unit)})
           <input
             value={stock}
             onChange={(e) => setStock(e.target.value)}
@@ -76,7 +77,7 @@ export function EditProductModal({
             required
             min={0}
             max={1000000}
-            step="any"
+            step={['DONA','BANKA','QUTI'].includes(product.unit||'KG')?1:0.001}
             className="block w-full mt-2 rounded-xl border p-3 text-base"
           />
         </label>

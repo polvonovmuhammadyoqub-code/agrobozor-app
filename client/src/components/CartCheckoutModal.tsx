@@ -1,3 +1,5 @@
+import {DistrictSelect} from './DistrictSelect';
+import {formatUnitName, formatQty} from '../lib/units';
 import { useEffect, useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +16,7 @@ export function CartCheckoutModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const [district,setDistrict]=useState('');
   const { items, subtotal, deliveryFee, grandTotal, clearCart } = useCart();
   const { user } = useAuth();
   const options = usePaymentOptions(isOpen, user?.role === 'BUYER_B2B');
@@ -59,6 +62,7 @@ export function CartCheckoutModal({
           quantity_kg: i.quantity_kg,
         })),
         delivery_address: address,
+        delivery_district: district||undefined,
         delivery_schedule: schedule || undefined,
         payment_method: method,
       });
@@ -167,7 +171,7 @@ export function CartCheckoutModal({
             {items.map((i) => (
               <li key={i.product.id} className="flex justify-between gap-2">
                 <span>
-                  {i.product.title} · {i.quantity_kg} kg
+                  {i.product.title} · {formatQty(i.quantity_kg,i.product.unit)}
                 </span>
                 <strong>
                   {Math.round(
@@ -200,6 +204,7 @@ export function CartCheckoutModal({
               />
             </label>
           )}
+          <DistrictSelect value={district} onChange={setDistrict}/>
           <PaymentSelector
             options={options}
             value={method}

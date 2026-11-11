@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import React, { useState, useEffect } from 'react';
 import { Order } from '../types';
 import { api } from '../lib/api';
@@ -21,6 +22,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
   onOpenInvoice,
 }) => {
   const { user, refreshUser } = useAuth();
+  const [pins,setPins]=useState<Record<string,string>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -69,7 +71,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
   const handleDeliverOrder = async (orderId: string) => {
     setActionLoading(orderId);
     try {
-      await api.orders.updateStatus(orderId, 'DELIVERED');
+      await api.orders.updateStatus(orderId, 'DELIVERED',pins[orderId]||'');
       await refreshUser();
       fetchOrders();
     } catch (err: any) {
@@ -99,7 +101,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
   );
 
   const completedCount = historyOrders.length;
-  const totalEarned = completedCount * 12000;
+
 
   return (
     <div className="space-y-6">
@@ -235,8 +237,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="font-extrabold text-sm text-gray-900">
-                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg}{' '}
-                        kg)
+                        {o.product_title || o.product?.title || 'Agro mahsulot'} ({formatQty(o.quantity_kg, o.unit || o.product?.unit)})
                       </span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
                         +{o.courier_payout.toLocaleString()} so‘m {o.payment_method === 'DIRECT_FARMER' ? '— fermer qo‘lda to‘laydi' : 'kuryer haqi'}
@@ -293,15 +294,14 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="font-extrabold text-sm text-gray-900">
-                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg}{' '}
-                        kg)
+                        {o.product_title || o.product?.title || 'Agro mahsulot'} ({formatQty(o.quantity_kg, o.unit || o.product?.unit)})
                       </span>
                       <span className="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
                         Yo'lda
                       </span>
                     </div>
                     <div className="text-gray-700">
-                      Yetkazish manzili: <strong>{o.delivery_address}</strong>
+                      Olib ketish: <strong>{o.pickup_address || o.product?.pickup_address || o.farmer?.region}</strong><br/>Yetkazish manzili: <strong>{o.delivery_address}</strong>
                     </div>
                     <div className="text-gray-600">
                       Mijoz: {o.buyer?.full_name || 'Xaridor'}{' '}
@@ -316,6 +316,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
                     </div>
                   </div>
 
+                  <label className="text-sm">Yetkazish PIN kodi<input aria-label="Yetkazish PIN kodi" inputMode="numeric" maxLength={4} value={pins[o.id]||''} onChange={e=>setPins(old=>({...old,[o.id]:e.target.value.replace(/\D/g,'')}))} className="block border rounded-xl p-3 mt-2"/>{(o.delivery_pin_attempts||0)>=5 && <span className="text-rose-700">PIN bloklangan. Adminga murojaat qiling.</span>}</label>
                   <button
                     onClick={() => handleDeliverOrder(o.id)}
                     disabled={
@@ -344,7 +345,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({
               >
                 <div>
                   <div className="font-bold text-gray-900">
-                    {o.product?.title || 'Agro mahsulot'}
+                    {o.product_title || o.product?.title || 'Agro mahsulot'}
                   </div>
                   <div className="text-gray-500">
                     Manzil: {o.delivery_address}

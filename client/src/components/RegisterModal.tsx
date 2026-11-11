@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { Role } from '../types';
+import { TASHKENT_CITY_DISTRICTS, TASHKENT_REGION_DISTRICTS } from '../lib/districts';
 import {
   X,
   Phone,
@@ -433,10 +434,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                 </div>
               </div>
 
-              {/* Viloyat */}
+              {/* Hudud (Tuman / Viloyat) */}
               <div>
                 <label className="block font-bold text-gray-700 mb-1">
-                  Viloyat / Shahar *
+                  Hudud (Tuman / Viloyat) *
                 </label>
                 <div className="relative">
                   <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -444,12 +445,27 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     required
                     value={region}
                     onChange={(e) => setRegion(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none appearance-none"
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                   >
-                    <option value="">Viloyatni tanlang...</option>
-                    {REGIONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
+                    <option value="">Tumanni tanlang...</option>
+                    <optgroup label="Toshkent viloyati tumanlari">
+                      {TASHKENT_REGION_DISTRICTS.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Toshkent shahri tumanlari">
+                      {TASHKENT_CITY_DISTRICTS.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Boshqa hududlar">
+                      {REGIONS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </optgroup>
+                    {region && !REGIONS.includes(region) && !(TASHKENT_CITY_DISTRICTS as readonly string[]).includes(region) && !(TASHKENT_REGION_DISTRICTS as readonly string[]).includes(region) && (
+                      <option value={region}>{region}</option>
+                    )}
                   </select>
                 </div>
               </div>

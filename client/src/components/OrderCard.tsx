@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import React, { useState } from 'react';
 import { Order, OrderStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +33,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   onOpenReview,
 }) => {
   const { user, refreshUser } = useAuth();
+  const [pinInput,setPinInput]=useState('');
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const getStatusBadge = (status: OrderStatus) => {
@@ -241,7 +243,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const handleCourierDeliver = async () => {
     setLoadingAction('deliver');
     try {
-      await api.orders.updateStatus(order.id, 'DELIVERED');
+      await api.orders.updateStatus(order.id, 'DELIVERED',pinInput);
       await refreshUser();
       onRefresh();
     } catch (err: any) {
@@ -251,9 +253,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     }
   };
 
-  const isBuyer = user?.id === order.buyer_id || user?.role === 'ADMIN';
-  const isFarmer = user?.id === order.farmer_id || user?.role === 'ADMIN';
-  const isCourier = user?.role === 'COURIER' || user?.role === 'ADMIN';
+  const isBuyer = user?.id === order.buyer_id;
+  const isFarmer = user?.id === order.farmer_id;
+  const isCourier = user?.role === 'COURIER';
 
   return (
     <div className="bg-white rounded-3xl border border-gray-200/90 shadow-sm hover:shadow-md transition-shadow overflow-hidden p-5 sm:p-6 space-y-5">
@@ -291,6 +293,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
       </div>
 
+      {user?.id===order.buyer_id && order.delivery_pin && !['COMPLETED','CANCELLED','REFUNDED'].includes(order.status) && <section className="p-4 bg-emerald-50 rounded-xl"><p className="text-sm font-bold">Yetkazish PIN kodi</p><strong className="text-3xl tracking-[.3em]">{order.delivery_pin}</strong><p className="text-xs mt-2">Faqat mahsulotni olganingizda logistga ayting.</p></section>}
+      {user?.role==='COURIER' && order.status==='IN_TRANSIT' && <label className="block text-sm">Yetkazish PIN kodi<input aria-label="Yetkazish PIN kodi" inputMode="numeric" maxLength={4} value={pinInput} onChange={e=>setPinInput(e.target.value.replace(/\D/g,''))} className="block border rounded-xl p-3 mt-2"/></label>}
+      {user?.role==='ADMIN' && ['PAID_IN_ESCROW','CONFIRMED_BY_FARMER','IN_TRANSIT'].includes(order.status) && <div className="flex flex-wrap gap-2"><button className="p-3 border rounded-xl" onClick={async()=>{const reason=prompt('PIN yangilash sababi');if(!reason)return;try{await api.admin.resetPin(order.id,reason);onRefresh();}catch(e){alert((e as Error).message);}}}>PIN yangilash</button>{order.status==='IN_TRANSIT' && <button className="p-3 border rounded-xl" onClick={async()=>{const reason=prompt('Yetkazishni qo‘lda tasdiqlash sababi (kamida 5 belgi)');if(!reason)return;try{await api.admin.deliverOverride(order.id,reason);onRefresh();}catch(e){alert((e as Error).message);}}}>Yetkazishni tasdiqlash (admin)</button>}</div>}
       {/* Stepper Vizual Jarayon */}
       <div className="hidden sm:block py-1">
         <div className="flex items-center justify-between relative">
@@ -335,12 +340,12 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         <div className="flex items-center space-x-3.5">
           <img
             src={order.product?.image_url}
-            alt={order.product?.title}
+            alt={order.product_title || order.product?.title}
             className="w-16 h-16 rounded-2xl object-cover border border-gray-200"
           />
           <div>
             <h4 className="font-bold text-gray-900 text-sm">
-              {order.product?.title}
+              {order.product_title || order.product?.title}
             </h4>
             <div className="text-xs text-gray-500 mt-0.5">
               Fermer:{' '}
@@ -351,8 +356,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             </div>
             <div className="text-xs text-gray-600 mt-1">
               Miqdor:{' '}
-              <strong className="text-gray-900">{order.quantity_kg} kg</strong>{' '}
-              × {order.product?.price_per_kg?.toLocaleString()} so'm
+              <strong className="text-gray-900">{formatQty(order.quantity_kg,order.unit||order.product?.unit)}</strong>{' '}
+              × {(order.unit_price_per_kg ?? order.product?.price_per_kg)?.toLocaleString()} so'm
             </div>
           </div>
         </div>

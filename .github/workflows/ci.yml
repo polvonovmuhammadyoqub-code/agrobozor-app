@@ -26,8 +26,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run db:push
+      - run: npm ci --include=dev
+      - run: npm run db:migrate
       - run: npm run build
       - run: npm test
       - run: npm exec --workspace client -- playwright install --with-deps chromium

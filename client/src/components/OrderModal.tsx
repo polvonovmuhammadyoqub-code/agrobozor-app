@@ -1,3 +1,5 @@
+import {DistrictSelect} from './DistrictSelect';
+import {formatUnitName, formatQty} from '../lib/units';
 import { useEffect, useState } from 'react';
 import { Product, PaymentMethod } from '../types';
 import { api } from '../lib/api';
@@ -13,6 +15,7 @@ export function OrderModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const [district,setDistrict]=useState('');
   const { user, refreshUser } = useAuth();
   const options = usePaymentOptions(!!product, user?.role === 'BUYER_B2B');
   const [quantity, setQuantity] = useState(product?.min_order_kg || 1);
@@ -62,6 +65,7 @@ export function OrderModal({
         quantity_kg: quantity,
         payment_method: method,
         delivery_address: address,
+        delivery_district: district||undefined,
         delivery_schedule: schedule || undefined,
       });
       try {
@@ -124,7 +128,7 @@ export function OrderModal({
         <div>
           <h3 className="font-bold">{product.title}</h3>
           <p className="text-sm text-emerald-800">
-            {product.price_per_kg.toLocaleString()} so‘m / kg
+            {product.price_per_kg.toLocaleString()} so‘m / {formatUnitName(product.unit)}
           </p>
         </div>
       </div>
@@ -162,10 +166,10 @@ export function OrderModal({
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <label className="block text-sm">
-            Miqdor (kg)
+            Miqdor ({formatUnitName(product.unit)})
             <input
               type="number"
-              step="any"
+              step={['DONA','BANKA','QUTI'].includes(product.unit||'KG')?1:0.001}
               min={product.min_order_kg}
               max={product.available_quantity_kg}
               required
@@ -196,6 +200,7 @@ export function OrderModal({
               />
             </label>
           )}
+          <DistrictSelect value={district} onChange={setDistrict}/>
           <PaymentSelector
             options={options}
             value={method}

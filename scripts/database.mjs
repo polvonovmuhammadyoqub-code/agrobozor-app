@@ -1,0 +1,11 @@
+import dotenv from 'dotenv';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=fileURLToPath(new URL('../',import.meta.url));
+dotenv.config({path:[path.join(root,'.env'),path.join(root,'server/.env')]});
+if(!process.env.DATABASE_URL||!process.env.DIRECT_URL)throw new Error('DATABASE_URL and DIRECT_URL must be configured; values are never printed.');
+const commands={migrate:['migrate','deploy'],baseline:['migrate','resolve','--applied','0001_legacy'],status:['migrate','status']};
+const command=commands[process.argv[2]];if(!command)throw new Error('Use migrate, baseline or status');
+const result=spawnSync(process.execPath,[path.join(root,'node_modules/prisma/build/index.js'),...command,'--schema',path.join(root,'server/prisma/schema.prisma')],{cwd:root,stdio:'inherit',env:process.env});
+process.exit(result.status??1);

@@ -189,3 +189,32 @@ test('farmer sees a receive-payment action and direct orders have no escrow badg
   await expect(page.getByText('Fermer to‘lovni oldi',{exact:true})).toBeVisible();
   await expect(page.getByText('Escrowda himoyalangan')).toHaveCount(0);
 });
+
+test('farmer combines uploaded photo, units and pickup district in a new listing',async({page})=>{
+  const farmer={...user,id:'farmer',role:'FARMER',kyc_status:'APPROVED'};
+  let inventory:unknown[]=[];
+  await page.addInitScript(()=>localStorage.setItem('agro_token','fixture-token'));
+  await page.route('**/api/auth/me',r=>r.fulfill({json:farmer}));
+  await page.route('**/api/orders',r=>r.fulfill({json:[]}));
+  await page.route('**/api/products/mine/list',r=>r.fulfill({json:inventory}));
+  await page.route('**/api/price-recommendation?*',r=>r.fulfill({json:{recommended_price:null}}));
+  await page.route('**/api/uploads/sign',async r=>{
+    const b=r.request().postDataJSON();expect(b.bucket).toBe('product-images');expect(b.content_type).toBe('image/jpeg');expect(b.size_bytes).toBeGreaterThan(0);
+    await r.fulfill({json:{signed_url:'http://127.0.0.1:5000/test-upload',public_url:'https://storage.test.invalid/photo.jpg',path:'farmer/photo.jpg'}});
+  });
+  await page.route('**/test-upload',async r=>{expect(r.request().method()).toBe('PUT');await r.fulfill({status:200,body:''});});
+  await page.route('**/api/products',async r=>{
+    const b=r.request().postDataJSON();expect(b.unit).toBe('DONA');expect(b.pickup_district).toBe('Chilonzor');expect(b.region).toBe('Toshkent');expect(b.image_urls).toEqual(['https://storage.test.invalid/photo.jpg']);
+    inventory=[{...product,...b,id:'photo-product',_count:{views:0,orders:0}}];await r.fulfill({status:201,json:inventory[0]});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Mahsulot qo‘shish',exact:true}).first().click();
+  await page.getByPlaceholder(/Masalan: Parkent/).fill('Dona qovoq');
+  await page.getByLabel('O‘lchov birligi').selectOption('DONA');
+  await page.getByLabel('Olib ketish tumani').selectOption({label:'Chilonzor'});
+  await page.getByPlaceholder("so'm",{exact:true}).fill('15000');
+  await page.locator('input[type=file]').setInputFiles({name:'pixel.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=','base64')});
+  await expect(page.locator('input[type=file]')).toHaveValue('');
+  await expect(page.getByRole('button',{name:'Sotuvga chiqarish',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Sotuvga chiqarish',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Dona qovoq',exact:true})).toBeVisible();
+});

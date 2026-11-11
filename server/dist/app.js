@@ -12,16 +12,20 @@ import reviewRoutes from './routes/reviews.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/users.js';
 import messageRoutes from './routes/messages.js';
+import uploadRoutes from './routes/uploads.js';
+import prisma from './db.js';
 import { paymeHandler } from './services/payme.js';
 import { paymentOptions } from './services/payment-options.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const app = express();
-app.set('trust proxy', 1); // Vercel proxy ortida haqiqiy IP uchun
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : Number(process.env.TRUST_PROXY || 0)); // Vercel proxy ortida haqiqiy IP uchun
 app.use(helmet({ contentSecurityPolicy: false }));
 // Frontend va API bir domenda (Vercel) — CORS faqat aniq ko'rsatilgan manzillar uchun
 const allowed = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
 app.use(cors({ origin: allowed.length ? allowed : false }));
+app.use((req, _res, next) => { if (req.body && typeof req.body === 'object')
+    req._body = true; next(); });
 // Payme requires JSON-RPC errors with HTTP 200, including malformed JSON.
 app.post('/api/payments/payme', express.json({ limit: '100kb' }), paymeHandler);
 app.use('/api/payments/payme', ((err, _req, res, _next) => {
@@ -53,6 +57,14 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/uploads', uploadRoutes);
+app.get('/api/ready', async (_req, res) => { try {
+    await prisma.$queryRaw `SELECT 1`;
+    res.json({ status: 'ready' });
+}
+catch {
+    res.status(503).json({ status: 'unavailable' });
+} });
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -66,9 +78,11 @@ app.get('*', (req, res, next) => {
     if (req.url.startsWith('/api')) {
         return next();
     }
+    if (path.extname(req.path))
+        return void res.status(404).end();
     res.sendFile(path.join(clientDist, 'index.html'), (err) => {
         if (err) {
-            res.status(200).send('AgroBozor API ishlamoqda.');
+            res.status(503).json({ error: 'Ilova vaqtincha mavjud emas' });
         }
     });
 });

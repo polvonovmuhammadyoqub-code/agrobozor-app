@@ -48,6 +48,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateQuantity = (productId: string, quantity_kg: number) => {
     if (!Number.isFinite(quantity_kg) || quantity_kg <= 0) return;
+    if(items.some(i=>i.product.id===productId&&['DONA','BANKA','QUTI'].includes(i.product.unit||'KG')&&!Number.isInteger(quantity_kg)))return;
     setItems((prev) =>
       prev.map((item) =>
         item.product.id === productId

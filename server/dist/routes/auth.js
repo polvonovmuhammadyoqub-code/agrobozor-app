@@ -7,6 +7,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { sendVerificationEmail } from '../services/email.js';
 import { JWT_SECRET, AUTO_APPROVE_KYC } from '../config.js';
 import { cleanText, normalizePhone, PUBLIC_ROLES } from '../utils/validate.js';
+import { fulfillmentFields } from '../utils/fulfillment.js';
 const router = Router();
 const MAX_CODE_ATTEMPTS = 5;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -81,6 +82,13 @@ router.post('/register', async (req, res) => {
         const full_name = cleanText(b.full_name, 120);
         const role = String(b.role ?? '');
         const region = cleanText(b.region, 120);
+        let district = null;
+        try {
+            district = fulfillmentFields({ district: b.district }).district || null;
+        }
+        catch (e) {
+            return res.status(400).json({ error: e.message });
+        }
         if (!phone)
             return res.status(400).json({ error: "Telefon raqami noto'g'ri (+998 XX XXX XX XX)" });
         if (!EMAIL_RE.test(email))
@@ -125,6 +133,7 @@ router.post('/register', async (req, res) => {
                     full_name,
                     role,
                     region,
+                    district,
                     tin_or_passport: tin || `ID-${Date.now()}`,
                     farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
                     kyc_status,

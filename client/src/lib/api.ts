@@ -42,10 +42,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    const isNetwork = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+    throw new Error(
+      isNetwork
+        ? "Server bilan aloqa uzildi yoki backend server faol emas (Failed to fetch). Tarmoqni yoki server holatini tekshiring."
+        : (err?.message || 'Serverga ulanishda xatolik yuz berdi')
+    );
+  }
 
   const data = await response.json().catch(() => {
     throw new ApiError('Serverdan yaroqsiz javob olindi', response.status);
@@ -103,6 +113,7 @@ export const api = {
     trackView: (id: string) => request<{ success: boolean }>(`/products/${id}/view`, { method: 'POST' }),
     analytics: (id: string) => request<ProductAnalytics>(`/products/${id}/analytics`),
     getMine: () => request<Product[]>('/products/mine/list'),
+    getLast: () => request<Product | null>('/products/farmer/last'),
     create: (body: Partial<Product>) =>
       request<Product>('/products', {
         method: 'POST',
@@ -117,10 +128,11 @@ export const api = {
       request<{ message: string }>(`/products/${id}`, {
         method: 'DELETE',
       }),
-    getPriceRecommendation: (category: string, region?: string, title?: string) => {
+    getPriceRecommendation: (category: string, region?: string, title?: string, unit?: string) => {
       const query = new URLSearchParams({ category });
       if (region) query.append('region', region);
       if (title) query.append('title', title);
+      if (unit) query.append('unit',unit);
       return request<PriceRecommendation>(`/price-recommendation?${query.toString()}`);
     },
   },
@@ -135,6 +147,7 @@ export const api = {
       payment_method: string;
       delivery_address: string;
       delivery_schedule?: string;
+      delivery_district?: string;
     }) =>
       request<Order>('/orders', {
         method: 'POST',
@@ -144,6 +157,7 @@ export const api = {
       items: Array<{ product_id: string; quantity_kg: number }>;
       delivery_address: string;
       delivery_schedule?: string;
+      delivery_district?: string;
       payment_method: string;
     }) =>
       request<{
@@ -162,10 +176,10 @@ export const api = {
     confirmDirectPayment: (id: string, amount: number) => request<{message:string}>(`/orders/${id}/confirm-direct-payment`, {method:'POST',body:JSON.stringify({received:true,received_amount:amount})}),
     cancel: (id: string) => request<{ message: string }>(`/orders/${id}/cancel`, { method: 'POST' }),
     reject: (id: string) => request<{ message: string }>(`/orders/${id}/reject`, { method: 'POST' }),
-    updateStatus: (id: string, status: string) =>
+    updateStatus: (id: string, status: string, pin?: string) =>
       request<Order>(`/orders/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, pin }),
       }),
     complete: (id: string) =>
       request<{ message: string; order: Order }>(`/orders/${id}/complete`, {
@@ -233,6 +247,16 @@ export const api = {
         body: JSON.stringify({ status }),
       }),
     getTransactions: () => request<Transaction[]>('/admin/transactions'),
+    deliverOverride: (orderId: string, reason: string) =>
+      request<{ message: string }>(`/admin/orders/${orderId}/deliver-override`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    resetPin: (orderId: string, reason?: string) =>
+      request<{ message: string }>(`/admin/orders/${orderId}/reset-pin`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
   },
 
   // Users & Wallet
@@ -251,5 +275,14 @@ export const api = {
         body: JSON.stringify({ amount, card_or_account }),
       }),
     getWithdrawals: () => request<WithdrawalRequest[]>('/users/withdrawals'),
+  },
+
+  // Uploads (Supabase Storage)
+  uploads: {
+    sign: (bucket: 'product-images' | 'private-docs', content_type: string, size_bytes?:number) =>
+      request<{ signed_url: string; public_url: string | null; path: string; token?: string }>('/uploads/sign', {
+        method: 'POST',
+        body: JSON.stringify({ bucket, content_type, size_bytes }),
+      }),
   },
 };

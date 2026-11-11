@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import { useEffect, useState } from 'react';
 import {
   Plus,
@@ -219,9 +220,9 @@ export function FarmerDashboard(p: Props) {
                   <div className="p-4 space-y-3">
                     <h2 className="font-bold text-lg">{product.title}</h2>
                     <p className="text-emerald-800 font-bold">
-                      {product.price_per_kg.toLocaleString()} so‘m / kg{' '}
+                      {product.price_per_kg.toLocaleString()} so‘m / {formatUnitName(product.unit)}{' '}
                       <span className="text-gray-400 font-normal text-xs">
-                        · {product.available_quantity_kg} kg qoldi
+                        · {formatQty(product.available_quantity_kg,product.unit)} qoldi
                       </span>
                     </p>
                     <div className="flex gap-4 text-xs text-gray-500">

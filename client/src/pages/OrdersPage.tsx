@@ -41,7 +41,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
   const filterTabs = [
     { id: 'ALL', label: 'Barchasi' },
     { id: 'PENDING_PAYMENT', label: '🟠 To\'lov kutilmoqda' },
-    { id: 'PAID_IN_ESCROW', label: '🟡 Escrowda' },
+    { id: 'PAID_IN_ESCROW', label: '🟡 Onlayn to‘lov tasdiqlangan' },
     { id: 'CONFIRMED_BY_FARMER', label: '🔵 Fermer tasdiqlagan' },
     { id: 'IN_TRANSIT', label: '🟠 Yo\'lda' },
     { id: 'DELIVERED', label: '🟢 Yetkazilgan' },

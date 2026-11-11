@@ -2,8 +2,11 @@ import { Router, Response } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
 import { INVOICE_TIMEOUT_HOURS } from '../config.js';
+import { paymentMode } from '../services/payment-options.js';
 import { holdInEscrow } from '../services/settlement.js';
 
+import {generateDeliveryPin} from '../services/orderActions.js';
+import {cleanText} from '../utils/validate.js';
 const router = Router();
 
 // Barcha admin amallari uchun ADMIN ruxsatini talab qilamiz
@@ -77,6 +80,7 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
 
 // 1b. B2B hisob-faktura to'lovi bank orqali kelganini tasdiqlash -> pul escrow'ga tushadi
 router.post('/orders/:id/confirm-payment', async (req: AuthRequest, res: Response) => {
+  if(paymentMode()==='direct') return res.status(400).json({error:'Bu rejimda to‘lovni fermer tasdiqlaydi; platforma pul qabul qilmaydi'});
   try {
     const order = await prisma.order.findUnique({ where: { id: req.params.id } });
     if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
@@ -85,7 +89,7 @@ router.post('/orders/:id/confirm-payment', async (req: AuthRequest, res: Respons
       return res.status(400).json({ error: 'Hisob-faktura muddati tugagan' });
     }
     await prisma.$transaction(async (tx) => {
-      const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID_IN_ESCROW' } });
+      const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID_IN_ESCROW',paid_at:new Date(),delivery_pin:generateDeliveryPin(),delivery_pin_attempts:0 } });
       if (r.count !== 1) throw new Error('STATE');
       await holdInEscrow(tx, order);
     });
@@ -93,6 +97,89 @@ router.post('/orders/:id/confirm-payment', async (req: AuthRequest, res: Respons
   } catch (err: any) {
     if (err?.message === 'STATE') return res.status(400).json({ error: "Buyurtma to'lov kutmayapti" });
     return res.status(500).json({ error: 'Tasdiqlashda xatolik' });
+  }
+});
+
+// 1c. Admin tomonidan yetkazishni qo'lda tasdiqlash (override) — majburiy reason bilan
+router.post('/orders/:id/deliver-override', async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = req.user!;
+    const reason = cleanText(req.body?.reason, 500);
+    if (!reason || reason.length < 5) {
+      return res.status(400).json({ error: "Yetkazishni qo'lda tasdiqlash uchun sabab (kamida 5 belgi) kiritilishi shart" });
+    }
+
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    if (order.status !== 'IN_TRANSIT') {
+      return res.status(400).json({ error: "Faqat 'IN_TRANSIT' (yo'lda) holatidagi buyurtmani yetkazildi deb tasdiqlash mumkin" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const r = await tx.order.updateMany({
+        where: { id: order.id, status: 'IN_TRANSIT' },
+        data: { status: 'DELIVERED', delivered_at: new Date() },
+      });
+      if (r.count !== 1) throw new Error('STATE');
+
+      await tx.auditLog.create({
+        data: {
+          actor_id: admin.id,
+          action: 'ORDER_DELIVER_OVERRIDE',
+          order_id: order.id,
+          reason,
+        },
+      });
+    });
+
+    return res.json({ message: "Buyurtma admin tomonidan 'DELIVERED' holatiga o'tkazildi" });
+  } catch (err: any) {
+    if (err?.message === 'STATE') return res.status(409).json({ error: "Buyurtma holati mos emas yoki o'zgargan" });
+    console.error('Deliver override error:', err);
+    return res.status(500).json({ error: 'Yetkazishni tasdiqlashda xatolik' });
+  }
+});
+
+// 1d. Admin tomonidan PIN ni yangilash va urinishlarni nolga tushirish
+router.post('/orders/:id/reset-pin', async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = req.user!;
+    const reason = cleanText(req.body?.reason, 500) || "Admin tomonidan PIN kodi yangilandi";
+
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    if (!['PAID_IN_ESCROW', 'CONFIRMED_BY_FARMER', 'IN_TRANSIT'].includes(order.status)) {
+      return res.status(400).json({ error: "Bu holatdagi buyurtma uchun PIN ni yangilab bo'lmaydi" });
+    }
+
+    let newPin = generateDeliveryPin();
+    while(newPin === order.delivery_pin)newPin=generateDeliveryPin();
+
+    await prisma.$transaction(async (tx) => {
+      const changed=await tx.order.updateMany({
+        where: { id: order.id, status:order.status },
+        data: {
+          delivery_pin: newPin,
+          delivery_pin_attempts: 0,
+        },
+      });
+
+      if(changed.count !== 1) throw new Error('STATE');
+      await tx.auditLog.create({
+        data: {
+          actor_id: admin.id,
+          action: 'ORDER_RESET_PIN',
+          order_id: order.id,
+          reason,
+        },
+      });
+    });
+
+    // Yangi PIN faqat xaridorga ko'rinadi (javobda xavfsizlik uchun qaytarilmaydi)
+    return res.json({ message: "PIN kodi muvaffaqiyatli yangilandi va urinishlar soni 0 ga tushirildi" });
+  } catch (err) {
+    console.error('Reset pin error:', err);
+    return res.status(500).json({ error: 'PIN kodini yangilashda xatolik' });
   }
 });
 
@@ -191,7 +278,7 @@ router.get('/b2b-orders', async (_req: AuthRequest, res: Response) => {
       take: 100,
     });
 
-    return res.json(orders);
+    return res.json(orders.map(({delivery_pin,...safe})=>safe));
   } catch (err: any) {
     return res.status(500).json({ error: 'B2B buyurtmalarni yuklashda xatolik' });
   }

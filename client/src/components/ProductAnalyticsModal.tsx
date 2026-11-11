@@ -1,3 +1,4 @@
+import {formatUnitName, formatQty} from '../lib/units';
 import { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { Product, ProductAnalytics } from '../types';
@@ -48,7 +49,7 @@ export function ProductAnalyticsModal({
             {[
               ['Ko‘rgan odamlar', data.unique_views],
               ['Buyurtmalar', data.order_count],
-              ['Sotilgan', `${data.sold_kg} kg`],
+              ['Sotilgan', formatQty(data.sold_kg,product.unit)],
               ['Daromad', `${data.earned.toLocaleString()} so‘m`],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl bg-gray-50 p-4">

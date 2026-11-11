@@ -1,3 +1,6 @@
+import { OrdersPage } from './OrdersPage';
+import { InvoiceModal } from '../components/InvoiceModal';
+import { formatQty } from '../lib/units';
 import React, { useState, useEffect } from 'react';
 import { AdminStats, User, Dispute, Transaction, Order, WithdrawalRequest } from '../types';
 import { api } from '../lib/api';
@@ -33,7 +36,8 @@ export const AdminPanel: React.FC = () => {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'kpi' | 'kyc' | 'b2b' | 'withdrawals' | 'disputes' | 'transactions'>('kpi');
+  const [activeTab, setActiveTab] = useState<'deliveries' | 'kpi' | 'kyc' | 'b2b' | 'withdrawals' | 'disputes' | 'transactions'>('kpi');
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [kycRoleTab, setKycRoleTab] = useState<'FARMER' | 'COURIER'>('FARMER');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -248,9 +252,11 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
+      <InvoiceModal orderId={invoiceId} onClose={() => setInvoiceId(null)} />
       {/* Asosiy Admin Tablari */}
       <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden p-6 space-y-6">
         <div className="flex items-center space-x-2 border-b border-gray-100 pb-4 overflow-x-auto">
+          <button onClick={() => setActiveTab('deliveries')} className="px-4 py-2 rounded-2xl text-xs font-bold bg-gray-100 whitespace-nowrap">Yetkazish nazorati</button>
           <button
             onClick={() => setActiveTab('kpi')}
             className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
@@ -339,6 +345,7 @@ export const AdminPanel: React.FC = () => {
         </div>
 
         {/* Tab 1: KPI Tafsilotlari */}
+        {activeTab === 'deliveries' && <OrdersPage onOpenInvoice={setInvoiceId} onOpenDispute={() => {}} onOpenReview={() => {}} />}
         {activeTab === 'kpi' && stats && (
           <div className="space-y-4 text-xs">
             <h3 className="font-bold text-sm text-gray-900">Platforma Foydalanuvchilari va Buyurtmalar Holati</h3>
@@ -517,7 +524,7 @@ export const AdminPanel: React.FC = () => {
                         <div className="text-[11px] text-gray-500 font-normal">STIR: {order.buyer?.tin_or_passport} | Tel: {order.buyer?.phone}</div>
                       </td>
                       <td className="py-3 text-gray-700">
-                        {order.product?.title} ({order.quantity_kg} kg)
+                        {order.product_title || order.product?.title} ({formatQty(order.quantity_kg, order.unit || order.product?.unit)})
                       </td>
                       <td className="py-3 font-extrabold text-agro-green">
                         {order.total_paid.toLocaleString()} so'm

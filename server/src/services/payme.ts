@@ -6,6 +6,8 @@ import { paymeConfig, paymentMode } from './payment-options.js';
 import { holdInEscrow } from './settlement.js';
 import { PAYMENT_TIMEOUT_MIN } from '../config.js';
 
+import { generateDeliveryPin } from './orderActions.js';
+
 const TTL = 43_200_000; // Payme Merchant API: twelve hours from provider creation time.
 class RpcError extends Error {
   constructor(
@@ -205,7 +207,7 @@ async function dispatch(method: string, p: any): Promise<any> {
         return { t: await cancelPending(tx, t, 4), expired: true };
       const changed = await tx.order.updateMany({
         where: { id: t.order_id, status: 'PENDING_PAYMENT' },
-        data: { status: 'PAID_IN_ESCROW' },
+        data: { status: 'PAID_IN_ESCROW',paid_at:new Date(),delivery_pin:generateDeliveryPin(),delivery_pin_attempts:0 },
       });
       if (changed.count !== 1) fail(-31008, 'Buyurtma holati o‘zgargan');
       await holdInEscrow(tx, t.order);
