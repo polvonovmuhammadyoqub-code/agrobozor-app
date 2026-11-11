@@ -55,8 +55,6 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Guruhlangan fermerlar soni
-  const distinctFarmersCount = new Set(items.map((i) => i.product.farmer_id)).size;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,12 +84,13 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
 
       const res = await api.orders.checkout(payload);
 
-      // Agar onlayn to'lov (demo) bo'lsa, har bir buyurtmani avtomatik to'lash
+      let failedPayments = 0;
       if (paymentMethod !== 'INVOICE_B2B') {
         for (const order of res.orders) {
           try {
             await api.orders.pay(order.id, paymentMethod);
           } catch (payErr) {
+            failedPayments++;
             console.error('Auto pay error:', payErr);
           }
         }
@@ -101,7 +100,9 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       setSuccessMessage(
         paymentMethod === 'INVOICE_B2B'
           ? `Muvaffaqiyatli! ${res.orders.length} ta buyurtma uchun B2B hisob-faktura shakllantirildi. Admin to'lovni tasdiqlagach buyurtmalar yuboriladi.`
-          : `Muvaffaqiyatli! ${res.orders.length} ta mahsulot uchun buyurtma qabul qilindi va to'lov Escrow himoyasiga o'tkazildi.`
+          : failedPayments > 0
+            ? `${res.orders.length} ta buyurtma yaratildi. ${failedPayments} ta buyurtma to'lovi tasdiqlanmadi. Buyurtmalar sahifasida holatni tekshiring va to'lovni qayta bajaring.`
+            : `Muvaffaqiyatli! ${res.orders.length} ta mahsulot uchun buyurtma qabul qilindi va to'lov Escrow himoyasiga o'tkazildi.`
       );
 
       setTimeout(() => {
@@ -244,7 +245,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             <div className="flex justify-between text-gray-600">
               <span className="flex items-center space-x-1">
                 <Truck className="w-3.5 h-3.5 text-gray-500" />
-                <span>Logistika ({distinctFarmersCount} ta fermer partiyasi):</span>
+                <span>Logistika ({items.length} ta alohida buyurtma):</span>
               </span>
               <strong className="text-gray-900">{deliveryFee.toLocaleString()} so'm</strong>
             </div>
@@ -274,7 +275,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading || items.length === 0}
+              disabled={loading || !!successMessage || items.length === 0}
               className="px-6 py-2.5 rounded-xl bg-agro-green hover:bg-agro-lightGreen text-white text-xs font-bold transition-all shadow-md shadow-emerald-900/15 disabled:opacity-50"
             >
               {loading ? "Rasmiylashtirilmoqda..." : "Buyurtmani Tasdiqlash"}

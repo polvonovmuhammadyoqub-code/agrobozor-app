@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { positiveInt, positiveNumber, toNumber } from '../src/utils/validate.js';
+
+test('numeric inputs reject junk, coercions, fractions for money and database overflow', () => {
+  for (const input of ['12kg', '1.5foo', '', ' ', [], {}, true, null, Infinity, NaN]) {
+    assert.ok(Number.isNaN(toNumber(input)), String(input));
+    assert.equal(positiveNumber(input), null);
+    assert.equal(positiveInt(input), null);
+  }
+  for (const input of [0, -1, 0.1, 1.5, 2_147_483_648]) assert.equal(positiveInt(input), null);
+  assert.equal(positiveInt('15000'), 15000);
+  assert.equal(positiveNumber('0.25'), 0.25);
+});

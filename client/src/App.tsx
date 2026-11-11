@@ -23,6 +23,8 @@ import { ShieldCheck, Sprout, LogIn, UserPlus } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
+  const [dataVersion, setDataVersion] = useState(0);
+  const refreshData = () => setDataVersion((n) => n + 1);
   const [currentTab, setCurrentTab] = useState<string>('marketplace');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -42,6 +44,7 @@ const AppContent: React.FC = () => {
 
   // Buyurtma berilgach
   const handleOrderSuccess = () => {
+    refreshData();
     setCurrentTab('orders');
   };
 
@@ -88,6 +91,7 @@ const AppContent: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {currentTab === 'marketplace' && (
           <Marketplace
+            key={`marketplace-${dataVersion}`}
             onOrderClick={(product) => {
               if (!user) {
                 setIsLoginOpen(true);
@@ -112,14 +116,16 @@ const AppContent: React.FC = () => {
 
         {currentTab === 'orders' && user && (
           <OrdersPage
+            key={`orders-${dataVersion}`}
             onOpenDispute={(order) => setDisputeOrder(order)}
             onOpenInvoice={(orderId) => setInvoiceOrderId(orderId)}
             onOpenReview={(order) => setReviewOrder(order)}
           />
         )}
 
-        {currentTab === 'farmer' && user && (
+        {currentTab === 'farmer' && user?.role === 'FARMER' && (
           <FarmerDashboard
+            key={`farmer-${dataVersion}`}
             onOpenAddProduct={() => setIsAddProductOpen(true)}
             onOpenWallet={() => setIsWalletOpen(true)}
             onOpenDispute={(order) => setDisputeOrder(order)}
@@ -128,13 +134,13 @@ const AppContent: React.FC = () => {
           />
         )}
 
-        {currentTab === 'courier' && user && (
+        {currentTab === 'courier' && user?.role === 'COURIER' && (
           <CourierDashboard
             onOpenInvoice={(orderId) => setInvoiceOrderId(orderId)}
           />
         )}
 
-        {currentTab === 'admin' && user && <AdminPanel />}
+        {currentTab === 'admin' && user?.role === 'ADMIN' && <AdminPanel />}
 
         {/* Mehmon holati: himoyalangan tab uchun chaqiruv ekrani */}
         {!user && currentTab !== 'marketplace' && (
@@ -181,7 +187,7 @@ const AppContent: React.FC = () => {
       <DisputeModal
         order={disputeOrder}
         onClose={() => setDisputeOrder(null)}
-        onSuccess={() => {}}
+        onSuccess={refreshData}
       />
 
       <InvoiceModal
@@ -192,17 +198,13 @@ const AppContent: React.FC = () => {
       <ReviewModal
         order={reviewOrder}
         onClose={() => setReviewOrder(null)}
-        onSuccess={() => {}}
+        onSuccess={refreshData}
       />
 
       <AddProductModal
         isOpen={isAddProductOpen}
         onClose={() => setIsAddProductOpen(false)}
-        onSuccess={() => {
-          if (currentTab === 'farmer') {
-            // refresh
-          }
-        }}
+        onSuccess={refreshData}
       />
 
       <WalletModal
@@ -234,7 +236,7 @@ const AppContent: React.FC = () => {
       <CartCheckoutModal
         isOpen={isCartCheckoutOpen}
         onClose={() => setIsCartCheckoutOpen(false)}
-        onSuccess={() => setCurrentTab('orders')}
+        onSuccess={handleOrderSuccess}
       />
 
       {/* Auth Modallar */}
@@ -297,14 +299,13 @@ const AppContent: React.FC = () => {
   );
 };
 
+const SessionContent: React.FC = () => {
+  const { user } = useAuth();
+  return <CartProvider key={user?.id || 'guest'}><AppContent /></CartProvider>;
+};
+
 export function App() {
-  return (
-    <AuthProvider>
-      <CartProvider>
-        <AppContent />
-      </CartProvider>
-    </AuthProvider>
-  );
+  return <AuthProvider><SessionContent /></AuthProvider>;
 }
 
 export default App;

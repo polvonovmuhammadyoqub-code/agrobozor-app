@@ -1,8 +1,9 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import prisma from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
-import { AUTO_APPROVE_KYC } from '../config.js';
+import { AUTO_APPROVE_KYC, JWT_SECRET } from '../config.js';
 const router = Router();
 // 1. Aqlli narx tavsiyasi API (/api/products/price-recommendation va /api/price-recommendation)
 router.get('/price-recommendation', async (req, res) => {
@@ -155,7 +156,7 @@ router.get('/mine/list', authenticateToken, requireRole(['FARMER']), async (req,
         return res.status(500).json({ error: 'Mahsulotlarni yuklashda xatolik' });
     }
 });
-// 3. Yagona mahsulot detali
+// 3. Yagona mahsulot detali (xaridor manzili va buyurtma tafsilotlari ochiq chiqib ketishi oldi olingan)
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -174,22 +175,60 @@ router.get('/:id', async (req, res) => {
                         created_at: true,
                     },
                 },
-                orders: {
-                    take: 5,
-                    where: { status: 'COMPLETED' },
-                    include: {
-                        reviews: true,
-                    },
-                },
             },
         });
         if (!product) {
             return res.status(404).json({ error: 'Mahsulot topilmadi' });
         }
-        return res.json(product);
+        // Nofaol yoki tekshirilmagan fermer mahsulotini faqat egasi yoki admin ko'ra oladi
+        if (!product.is_active || product.farmer.kyc_status !== 'APPROVED') {
+            let isAllowed = false;
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                try {
+                    const token = authHeader.split(' ')[1];
+                    const decoded = jwt.verify(token, JWT_SECRET);
+                    if (typeof decoded?.id === 'string') {
+                        const viewer = await prisma.user.findUnique({ where: { id: decoded.id }, select: { id: true, role: true } });
+                        isAllowed = !!viewer && (viewer.id === product.farmer_id || viewer.role === 'ADMIN');
+                    }
+                }
+                catch { }
+            }
+            if (!isAllowed) {
+                return res.status(404).json({ error: 'Mahsulot topilmadi yoki faol emas' });
+            }
+        }
+        // Sharhlar: faqat ommaviy xavfsiz maydonlar (orders va xaridor manzillarisiz!)
+        const reviews = await prisma.review.findMany({
+            where: {
+                order: {
+                    product_id: id,
+                    status: 'COMPLETED',
+                },
+            },
+            select: {
+                id: true,
+                rating: true,
+                comment: true,
+                created_at: true,
+                reviewer: {
+                    select: {
+                        id: true,
+                        full_name: true,
+                    },
+                },
+            },
+            orderBy: { created_at: 'desc' },
+            take: 10,
+        });
+        return res.json({
+            ...product,
+            reviews,
+        });
     }
     catch (err) {
-        return res.status(500).json({ error: 'Mahsulot ma\'lumotlarini olishda xatolik' });
+        return res.status(500).json({ error: "Mahsulot ma'lumotlarini olishda xatolik" });
     }
 });
 // 4. Yangi mahsulot qo'shish (faqat fermer; tekshiruvdan o'tmagan fermer mahsuloti ko'rinmaydi)
@@ -276,13 +315,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
         }
         if (b.price_per_kg !== undefined) {
             const p = positiveInt(b.price_per_kg);
-            if (!p)
+            if (!p || p > 10_000_000)
                 return res.status(400).json({ error: "Narx noto'g'ri" });
             data.price_per_kg = p;
         }
         if (b.available_quantity_kg !== undefined) {
             const q = toNumber(b.available_quantity_kg);
-            if (!(q >= 0))
+            if (!(q >= 0 && q <= 1_000_000))
                 return res.status(400).json({ error: "Miqdor noto'g'ri" });
             data.available_quantity_kg = q;
         }
@@ -299,12 +338,18 @@ router.put('/:id', authenticateToken, async (req, res) => {
         }
         if (b.region !== undefined)
             data.region = cleanText(b.region, 120);
-        if (b.is_active !== undefined)
-            data.is_active = !!b.is_active;
+        if (b.is_active !== undefined) {
+            if (typeof b.is_active !== 'boolean')
+                return res.status(400).json({ error: "Faollik qiymati noto'g'ri" });
+            data.is_active = b.is_active;
+        }
         if (b.harvest_date !== undefined) {
             const h = new Date(b.harvest_date);
             if (!isNaN(h.getTime()))
                 data.harvest_date = h;
+        }
+        if (data.min_order_kg !== undefined && data.min_order_kg > (data.available_quantity_kg ?? existing.available_quantity_kg)) {
+            return res.status(400).json({ error: "Minimal buyurtma qoldiqdan oshmasligi kerak" });
         }
         const updated = await prisma.product.update({ where: { id: existing.id }, data });
         return res.json(updated);

@@ -33,29 +33,34 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
   const [minPrice, setMinPrice] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
 
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, any> = {};
-      if (category !== 'ALL') params.category = category;
-      if (region !== 'ALL') params.region = region;
-      if (todayOnly) params.today_harvested = 'true';
-      if (minPrice) params.min_price = minPrice;
-      if (maxPrice) params.max_price = maxPrice;
-      if (searchQuery) params.search = searchQuery;
-
-      const data = await api.products.getAll(params);
-      setProducts(data);
-    } catch (e) {
-      console.error('Failed to load products:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    fetchProducts();
-  }, [category, region, todayOnly, minPrice, maxPrice, searchQuery]);
+    let active = true;
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params: Record<string, any> = {};
+        if (category !== 'ALL') params.category = category;
+        if (region !== 'ALL') params.region = region;
+        if (todayOnly) params.today_harvested = 'true';
+        if (minPrice) params.min_price = minPrice;
+        if (maxPrice) params.max_price = maxPrice;
+        if (searchQuery) params.search = searchQuery;
+
+        const data = await api.products.getAll(params);
+        if (active) setProducts(data);
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Mahsulotlarni yuklashda xatolik');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchProducts();
+    return () => { active = false; };
+  }, [category, region, todayOnly, minPrice, maxPrice, searchQuery, retry]);
 
   const categories = [
     { id: 'ALL', label: 'Barchasi' },
@@ -225,6 +230,11 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
           <div className="py-20 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-agro-green border-t-transparent" />
             <p className="mt-2 text-xs text-gray-500 font-medium">Mahsulotlar yuklanmoqda...</p>
+          </div>
+        ) : error ? (
+          <div role="alert" className="p-6 text-center bg-rose-50 text-rose-700 rounded-2xl">
+            <p>{error}</p>
+            <button onClick={() => setRetry((n) => n + 1)} className="mt-3 font-bold underline">Qayta urinish</button>
           </div>
         ) : products.length === 0 ? (
           <div className="py-16 text-center bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">

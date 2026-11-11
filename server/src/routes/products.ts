@@ -217,8 +217,9 @@ router.get('/:id', async (req: Request, res: Response) => {
         try {
           const token = authHeader.split(' ')[1];
           const decoded = jwt.verify(token, JWT_SECRET) as any;
-          if (decoded && (decoded.id === product.farmer_id || decoded.role === 'ADMIN')) {
-            isAllowed = true;
+          if (typeof decoded?.id === 'string') {
+            const viewer = await prisma.user.findUnique({ where: { id: decoded.id }, select: { id: true, role: true } });
+            isAllowed = !!viewer && (viewer.id === product.farmer_id || viewer.role === 'ADMIN');
           }
         } catch {}
       }
@@ -340,12 +341,12 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     }
     if (b.price_per_kg !== undefined) {
       const p = positiveInt(b.price_per_kg);
-      if (!p) return res.status(400).json({ error: "Narx noto'g'ri" });
+      if (!p || p > 10_000_000) return res.status(400).json({ error: "Narx noto'g'ri" });
       data.price_per_kg = p;
     }
     if (b.available_quantity_kg !== undefined) {
       const q = toNumber(b.available_quantity_kg);
-      if (!(q >= 0)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
+      if (!(q >= 0 && q <= 1_000_000)) return res.status(400).json({ error: "Miqdor noto'g'ri" });
       data.available_quantity_kg = q;
     }
     if (b.min_order_kg !== undefined) {
@@ -358,12 +359,18 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       data.image_url = b.image_url;
     }
     if (b.region !== undefined) data.region = cleanText(b.region, 120);
-    if (b.is_active !== undefined) data.is_active = !!b.is_active;
+    if (b.is_active !== undefined) {
+      if (typeof b.is_active !== 'boolean') return res.status(400).json({ error: "Faollik qiymati noto'g'ri" });
+      data.is_active = b.is_active;
+    }
     if (b.harvest_date !== undefined) {
       const h = new Date(b.harvest_date);
       if (!isNaN(h.getTime())) data.harvest_date = h;
     }
 
+    if (data.min_order_kg !== undefined && data.min_order_kg > (data.available_quantity_kg ?? existing.available_quantity_kg)) {
+      return res.status(400).json({ error: "Minimal buyurtma qoldiqdan oshmasligi kerak" });
+    }
     const updated = await prisma.product.update({ where: { id: existing.id }, data });
     return res.json(updated);
   } catch {

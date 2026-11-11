@@ -188,6 +188,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
               <input
                 type="number"
                 min={product.min_order_kg}
+                step="any"
                 max={product.available_quantity_kg}
                 value={quantity}
                 onChange={(e) => setQuantity(Number(e.target.value))}
@@ -252,7 +253,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                 { id: 'UZCARD', name: 'Uzcard', badge: 'Demo' },
                 { id: 'HUMO', name: 'Humo', badge: 'Demo' },
                 { id: 'INVOICE_B2B', name: 'B2B Invoice', badge: 'Bank' },
-              ].map((m) => (
+              ].filter((m) => m.id !== 'INVOICE_B2B' || user?.role === 'BUYER_B2B').map((m) => (
                 <button
                   type="button"
                   key={m.id}
@@ -312,7 +313,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !!successMessage}
               className="flex-1 bg-agro-green hover:bg-agro-lightGreen text-white px-5 py-2.5 rounded-xl text-xs font-extrabold shadow-md shadow-emerald-900/15 flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
             >
               {loading ? (

@@ -26,6 +26,10 @@ export function removeToken() {
   localStorage.removeItem('agro_token');
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -42,10 +46,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => {
+    throw new ApiError('Serverdan yaroqsiz javob olindi', response.status);
+  });
 
   if (!response.ok) {
-    throw new Error(data.error || 'Serverda xatolik yuz berdi');
+    throw new ApiError(data.error || 'Serverda xatolik yuz berdi', response.status);
   }
 
   return data as T;

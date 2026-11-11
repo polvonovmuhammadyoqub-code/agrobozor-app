@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
+import { INVOICE_TIMEOUT_HOURS } from '../config.js';
 import { holdInEscrow } from '../services/settlement.js';
 
 const router = Router();
@@ -79,6 +80,10 @@ router.post('/orders/:id/confirm-payment', async (req: AuthRequest, res: Respons
   try {
     const order = await prisma.order.findUnique({ where: { id: req.params.id } });
     if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    if (order.payment_method !== 'INVOICE_B2B') return res.status(400).json({ error: 'Faqat B2B bank hisob-fakturasi tasdiqlanadi' });
+    if (Date.now() - order.created_at.getTime() > INVOICE_TIMEOUT_HOURS * 3600000) {
+      return res.status(400).json({ error: 'Hisob-faktura muddati tugagan' });
+    }
     await prisma.$transaction(async (tx) => {
       const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID_IN_ESCROW' } });
       if (r.count !== 1) throw new Error('STATE');
@@ -226,8 +231,8 @@ router.post('/withdrawals/:id/approve', async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: `Bu so'rov allaqachon ${withdrawal.status} holatida` });
     }
 
-    const updated = await prisma.withdrawalRequest.update({
-      where: { id: withdrawal.id },
+    const claimed = await prisma.withdrawalRequest.updateMany({
+      where: { id: withdrawal.id, status: 'PENDING' },
       data: {
         status: 'PAID',
         processed_at: new Date(),
@@ -235,6 +240,8 @@ router.post('/withdrawals/:id/approve', async (req: AuthRequest, res: Response) 
       },
     });
 
+    if (claimed.count !== 1) return res.status(409).json({ error: "So'rov holati o'zgargan" });
+    const updated = await prisma.withdrawalRequest.findUnique({ where: { id: withdrawal.id } });
     return res.json({ message: "Pul o'tkazmasi tasdiqlandi", withdrawal: updated });
   } catch {
     return res.status(500).json({ error: 'Tasdiqlashda xatolik' });
@@ -254,14 +261,16 @@ router.post('/withdrawals/:id/reject', async (req: AuthRequest, res: Response) =
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. So'rovni REJECTED qilish
-      const updatedReq = await tx.withdrawalRequest.update({
-        where: { id: withdrawal.id },
+      const claimed = await tx.withdrawalRequest.updateMany({
+        where: { id: withdrawal.id, status: 'PENDING' },
         data: {
           status: 'REJECTED',
           processed_at: new Date(),
           admin_comment: reason,
         },
       });
+
+      if (claimed.count !== 1) throw new Error('STATE');
 
       // 2. Balansni qaytarish
       await tx.user.update({
@@ -278,11 +287,12 @@ router.post('/withdrawals/:id/reject', async (req: AuthRequest, res: Response) =
         },
       });
 
-      return updatedReq;
+      return tx.withdrawalRequest.findUnique({ where: { id: withdrawal.id } });
     });
 
     return res.json({ message: "So'rov rad etildi va mablag' foydalanuvchi balansiga qaytarildi", withdrawal: result });
-  } catch {
+  } catch (err: any) {
+    if (err?.message === 'STATE') return res.status(409).json({ error: "So'rov holati o'zgargan" });
     return res.status(500).json({ error: 'Rad etishda xatolik' });
   }
 });

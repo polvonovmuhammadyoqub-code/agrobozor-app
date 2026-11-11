@@ -34,7 +34,7 @@ B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confir
    npm run server             # terminal 1 (5000)
    npm run client             # terminal 2 (3000)
    ```
-4. Vercel: repo'ni import qiling, o‘zgaruvchilarni kiriting. `npm run build` jadvallarni avtomatik yangilaydi.
+4. Vercel: repo'ni import qiling, o‘zgaruvchilarni kiriting. `npm run build` faqat kodni yig‘adi; bazani o‘zgartirmaydi. Jadvallarni alohida `npm run db:push` bilan tayyorlang.
    Admin yaratish uchun bir marta lokal kompyuterdan (Vercel `DATABASE_URL` bilan) `npm run create-admin` ni ishga tushiring.
 
 ## Rollar va tekshiruv
@@ -43,7 +43,7 @@ B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confir
   Demo uchun `AUTO_APPROVE_KYC=true`.
 
 ## Keyingi qadamlar (MVP'dan keyin)
-Click/Payme integratsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · avtomatik testlar · Sentry.
+Click/Payme integratsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · Sentry.
 
 ## Admin yaratish (kompyutersiz) — Supabase SQL Editor
 ```sql
@@ -53,3 +53,64 @@ values (gen_random_uuid()::text, '+998901234567', 'admin@agrobozor.uz',
         'AgroBozor Admin', 'ADMIN', 'Toshkent', 'ADMIN', 'APPROVED');
 ```
 (`create extension if not exists pgcrypto;` kerak bo‘lsa avval shuni ishga tushiring.)
+
+## Tekshiruv va yangilash
+
+Node.js 22 tavsiya etiladi. `npm ci` lockfile bo‘yicha kutubxonalarni o‘rnatadi.
+
+```bash
+npm run build
+npm test
+npm audit
+```
+
+`npm test` odatiy holatda son qiymatlari tekshiruvini bajaradi; baza testlari
+`TEST_DATABASE_URL` bo‘lmasa **skip** qilinadi. To‘liq integratsiya testi uchun
+alohida, faqat testga tegishli PostgreSQL bazasini tayyorlang:
+
+```bash
+export TEST_DATABASE_URL="postgresql://.../agrobozor_test"
+DATABASE_URL="$TEST_DATABASE_URL" DIRECT_URL="$TEST_DATABASE_URL" npm run db:push
+npm test
+```
+
+Haqiqiy ulanish manzilini kiriting. Testlar ishlab turgan
+production bazasida bajarilmasin: ular foydalanuvchi, mahsulot va pul oqimi
+ma’lumotlarini yaratadi va o‘z yozuvlarini tozalaydi.
+
+Brauzer testlari (oldin `npm run build`):
+
+```bash
+npm exec --workspace client -- playwright install chromium
+npm run test:browser --workspace client
+```
+
+Tizimdagi Chromium uchun `CHROMIUM_PATH=/usr/bin/chromium` berish mumkin.
+Brauzer testlari frontend API javoblarini mock qiladi; server integratsiya
+testlari esa haqiqiy PostgreSQL bilan bajariladi. GitHub Actions ikkalasini,
+build va kutubxonalar auditini avtomatik ishga tushiradi.
+
+### Mavjud bazaga yangilash
+
+Sharhlar uchun `(order_id, reviewer_id, target_user_id)` unikal indeksi qo‘shildi.
+Mavjud bazada avval `server/prisma/review-uniqueness.sql` ni ko‘rib, qo‘llang.
+Takroriy sharhlar bo‘lsa, indeks yaratish xato beradi; yozuvlarni qo‘lda ko‘rib
+chiqing. Skript hech qanday sharhni o‘chirmaydi. Keyin `npm run db:push`.
+
+### Yetkazib berish va to‘lov
+
+Savatdagi har bir mahsulot alohida `Order`: fermer uni alohida rad etishi,
+xaridor bekor qilishi va boshqa kuryer olib ketishi mumkin. Shuning uchun har
+bir buyurtmaga **15 000 so‘m** logistika haqi hisoblanadi (bir fermerning ikki
+mahsulotiga ham ikki haq). Frontend va backend hisoblari bir xil. Fermer
+bo‘yicha bitta yetkazish haqiga qaytish uchun umumiy jo‘natma modeli va birga
+bekor qilish/yetkazish jarayoni kerak.
+
+Qisman to‘lov muvaffaqiyatsiz tugasa, savat qayta buyurtma yaratmasligi uchun
+bo‘shatiladi; yaratilgan buyurtmalar `Buyurtmalar` bo‘limida to‘lov kutib turadi.
+Muvaffaqiyat xabari bunday buyurtmalarni to‘langan deb ko‘rsatmaydi.
+
+Lokal serverdagi scheduler har daqiqada ishlaydi. Vercel serverless muhitida
+doimiy interval ishlamaydi; muddatli tozalash va avtomatik yakunlash hozir
+`GET /api/orders` chaqirilganda bajariladi. Aniq vaqt talab qilinsa, alohida
+himoyalangan rejalashtirilgan vazifa/cron qo‘shish kerak.

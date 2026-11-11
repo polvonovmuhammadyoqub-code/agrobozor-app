@@ -1,3 +1,4 @@
+import './env.js';
 // Markaziy sozlamalar. Production'da maxfiy kalitlar majburiy.
 export const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
 function requireSecret() {

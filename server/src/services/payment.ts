@@ -7,9 +7,6 @@ export interface ChargeResult {
   is_demo?: boolean;
 }
 
-// Takroriy to'lovdan himoya (idempotency kesh)
-const processedPayments = new Set<string>();
-
 /**
  * To'lov shlyuzi adapteri.
  *  - PAYMENT_MODE=mock     -> sinov to'lovlari (real pul yechilmaydi, faqat demo simulyatsiyasi)
@@ -17,14 +14,6 @@ const processedPayments = new Set<string>();
  * Haqiqiy integratsiyada Click Merchant / Payme Business Webhook handlerlari orqali imzolanadi.
  */
 export async function chargeOrder(orderId: string, amount: number, method: string): Promise<ChargeResult> {
-  const idempotencyKey = `${orderId}:${amount}:${method}`;
-  if (processedPayments.has(idempotencyKey)) {
-    return {
-      ok: false,
-      error: "Bu buyurtma uchun to'lov allaqachon amalga oshirilgan",
-    };
-  }
-
   const validOnlineMethods = ['CLICK', 'PAYME', 'UZCARD', 'HUMO'];
   if (!validOnlineMethods.includes(method)) {
     return {
@@ -34,10 +23,9 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
   }
 
   if (PAYMENT_MODE === 'mock') {
-    processedPayments.add(idempotencyKey);
     return {
       ok: true,
-      reference: `DEMO-${method}-${orderId.slice(0, 8)}-${Date.now()}`,
+      reference: `DEMO-${method}-${orderId}`,
       is_demo: true,
     };
   }
@@ -58,5 +46,5 @@ export async function refundOrder(orderId: string, amount: number, reference?: s
       refundReference: `REFUND-DEMO-${orderId.slice(0, 8)}-${Date.now()}`,
     };
   }
-  return { ok: true };
+  return { ok: false };
 }

@@ -39,6 +39,10 @@ function sanitize(order: any, u: AuthUser) {
   const o = { ...order };
   if (u.role === 'COURIER' && o.courier_id !== u.id && o.buyer) {
     o.buyer = { ...o.buyer, phone: undefined };
+    o.delivery_address = undefined;
+    o.delivery_schedule = undefined;
+    o.dispute = undefined;
+    o.reviews = [];
   }
   // Faqat o'ziga tegishli tranzaksiyalarni ko'radi (admin — hammasini)
   if (u.role !== 'ADMIN' && o.transactions) {
@@ -155,6 +159,9 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
     }
 
     const product_total_amount = Math.round(qty * product.price_per_kg);
+    if (!Number.isSafeInteger(product_total_amount) || product_total_amount < 1 || product_total_amount > 2_147_483_647 - DELIVERY_FEE) {
+      return res.status(400).json({ error: "Buyurtma summasi ruxsat etilgan chegaradan tashqarida" });
+    }
     const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
     const farmer_payout = product_total_amount - platform_commission;
 
@@ -203,7 +210,7 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
     const buyerId = req.user!.id;
     const { items, delivery_address, delivery_schedule, payment_method } = req.body || {};
 
-    if (!Array.isArray(items) || items.length === 0) {
+    if (!Array.isArray(items) || items.length === 0 || items.length > 50) {
       return res.status(400).json({ error: 'Savatda mahsulotlar mavjud emas' });
     }
 
@@ -219,8 +226,8 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
 
     // Har bir mahsulotni tekshirish
     const itemRequests = items.map((it: any) => ({
-      product_id: String(it.product_id),
-      quantity_kg: positiveNumber(it.quantity_kg),
+      product_id: typeof it?.product_id === 'string' ? it.product_id.trim() : '',
+      quantity_kg: positiveNumber(it?.quantity_kg),
     }));
 
     if (itemRequests.some((it: any) => !it.product_id || !it.quantity_kg)) {
@@ -228,6 +235,9 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
     }
 
     const productIds = itemRequests.map((it: any) => it.product_id);
+    if (new Set(productIds).size !== productIds.length) {
+      return res.status(400).json({ error: 'Bir mahsulot savatda faqat bir marta kiritilishi kerak' });
+    }
     const products = await prisma.product.findMany({
       where: { id: { in: productIds } },
       include: { farmer: true },
@@ -245,6 +255,10 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
       }
       if (prod.farmer.kyc_status !== 'APPROVED') {
         return res.status(400).json({ error: `Sotuvchi hali tekshiruvdan o'tmagan: ${prod.farmer.full_name}` });
+      }
+      const amount = Math.round(item.quantity_kg! * prod.price_per_kg);
+      if (amount < 1 || amount > 2_147_483_647 - DELIVERY_FEE) {
+        return res.status(400).json({ error: "Buyurtma summasi ruxsat etilgan chegaradan tashqarida" });
       }
       if (item.quantity_kg < prod.min_order_kg) {
         return res.status(400).json({ error: `${prod.title} uchun minimal buyurtma: ${prod.min_order_kg} kg` });
@@ -267,7 +281,6 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
       const resultList = [];
 
       for (const [farmerId, farmerItems] of farmerOrdersMap.entries()) {
-        let isFirstForFarmer = true;
 
         for (const item of farmerItems) {
           const prod = productMap.get(item.product_id)!;
@@ -285,11 +298,10 @@ router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req
           const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
           const farmer_payout = product_total_amount - platform_commission;
 
-          // Har bir fermer partiyasi uchun bir marta yetkazib berish haqi olinadi
-          const delivery_fee = isFirstForFarmer ? DELIVERY_FEE : 0;
-          const courier_payout = isFirstForFarmer ? COURIER_PAYOUT : 0;
-          const platform_logistics_margin = isFirstForFarmer ? LOGISTICS_MARGIN : 0;
-          isFirstForFarmer = false;
+          // Each order is claimed, cancelled and delivered independently.
+          const delivery_fee = DELIVERY_FEE;
+          const courier_payout = COURIER_PAYOUT;
+          const platform_logistics_margin = LOGISTICS_MARGIN;
 
           const order = await tx.order.create({
             data: {

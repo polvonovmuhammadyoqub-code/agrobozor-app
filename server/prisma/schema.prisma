@@ -122,6 +122,8 @@ model Dispute {
 }
 
 model Review {
+  @@unique([order_id, reviewer_id, target_user_id])
+
   id             String   @id @default(uuid())
   order_id       String
   reviewer_id    String

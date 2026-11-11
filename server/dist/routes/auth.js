@@ -19,13 +19,13 @@ async function checkCode(email, code) {
         where: { email, expires_at: { gt: new Date() } },
         orderBy: { created_at: 'desc' },
     });
-    if (!record || record.attempts >= MAX_CODE_ATTEMPTS)
+    if (!record)
         return false;
-    if (record.code !== code) {
-        await prisma.emailVerification.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
-        return false;
-    }
-    return true;
+    const attempt = await prisma.emailVerification.updateMany({
+        where: { id: record.id, attempts: { lt: MAX_CODE_ATTEMPTS }, expires_at: { gt: new Date() } },
+        data: { attempts: { increment: 1 } },
+    });
+    return attempt.count === 1 && record.code === code;
 }
 // 1. Emailga tasdiqlash kodini yuborish
 router.post('/send-verification-code', async (req, res) => {
@@ -110,24 +110,35 @@ router.post('/register', async (req, res) => {
         // Xaridorlar darhol faol; fermer va kuryer admin tekshiruvidan o'tadi (AUTO_APPROVE_KYC=true bo'lsa — darhol)
         const needsKyc = role === 'FARMER' || role === 'COURIER';
         const kyc_status = !needsKyc || AUTO_APPROVE_KYC ? 'APPROVED' : 'PENDING';
-        const user = await prisma.user.create({
-            data: {
-                phone,
-                email,
-                password_hash: await bcrypt.hash(password, 10),
-                full_name,
-                role,
-                region,
-                tin_or_passport: tin || `ID-${Date.now()}`,
-                farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
-                kyc_status,
-            },
+        const password_hash = await bcrypt.hash(password, 10);
+        const user = await prisma.$transaction(async (tx) => {
+            const consumed = await tx.emailVerification.deleteMany({
+                where: { email, code: cleanText(b.verification_code, 10), expires_at: { gt: new Date() }, attempts: { lte: MAX_CODE_ATTEMPTS } },
+            });
+            if (consumed.count !== 1)
+                throw new Error('CODE');
+            return tx.user.create({
+                data: {
+                    phone,
+                    email,
+                    password_hash,
+                    full_name,
+                    role,
+                    region,
+                    tin_or_passport: tin || `ID-${Date.now()}`,
+                    farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
+                    kyc_status,
+                },
+            });
         });
-        await prisma.emailVerification.deleteMany({ where: { email } }).catch(() => { });
         const { password_hash: _, ...safeUser } = user;
         return res.status(201).json({ user: safeUser, token: signToken(user.id) });
     }
     catch (err) {
+        if (err?.message === 'CODE')
+            return res.status(400).json({ error: "Tasdiqlash kodi eskirgan yoki ishlatilgan" });
+        if (err?.code === 'P2002')
+            return res.status(409).json({ error: "Telefon yoki email allaqachon ro'yxatdan o'tgan" });
         console.error('Register error:', err);
         return res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi" });
     }

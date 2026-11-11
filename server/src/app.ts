@@ -1,8 +1,7 @@
-import express from 'express';
+import express, { ErrorRequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,7 +13,6 @@ import reviewRoutes from './routes/reviews.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/users.js';
 
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,6 +56,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API manzili topilmadi' });
+});
+
 // Productionda Vite build qilingan statik fayllarni xizmat ko'rsatish
 const clientDist = path.join(__dirname, '../../client/dist');
 app.use(express.static(clientDist));
@@ -72,3 +74,16 @@ app.get('*', (req, res, next) => {
     }
   });
 });
+
+const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') {
+    return void res.status(400).json({ error: "JSON formati noto'g'ri" });
+  }
+  if (err?.type === 'entity.too.large') {
+    return void res.status(413).json({ error: "So'rov hajmi juda katta" });
+  }
+  console.error('Unhandled request error:', err);
+  res.status(500).json({ error: 'Serverda xatolik yuz berdi' });
+};
+app.use(errorHandler);

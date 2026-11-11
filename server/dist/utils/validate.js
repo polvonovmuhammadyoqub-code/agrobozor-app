@@ -1,5 +1,7 @@
 export function toNumber(v) {
-    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    if (typeof v !== 'number' && (typeof v !== 'string' || !v.trim()))
+        return NaN;
+    const n = typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? n : NaN;
 }
 export function positiveNumber(v) {
@@ -8,7 +10,7 @@ export function positiveNumber(v) {
 }
 export function positiveInt(v) {
     const n = toNumber(v);
-    return n > 0 ? Math.round(n) : null;
+    return Number.isInteger(n) && n > 0 && n <= 2_147_483_647 ? n : null;
 }
 export function cleanText(v, max) {
     return String(v ?? '').trim().slice(0, max);
