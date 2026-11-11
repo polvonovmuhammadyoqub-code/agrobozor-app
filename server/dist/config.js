@@ -23,3 +23,24 @@ export const COMMISSION_RATE = 0.1;
 export const PAYMENT_TIMEOUT_MIN = 30; // oddiy to'lov muddati
 export const INVOICE_TIMEOUT_HOURS = 72; // B2B hisob-faktura muddati
 export const DISPUTE_WINDOW_HOURS = 24; // yetkazilgandan keyin shikoyat oynasi
+// Supabase Storage sozlamalari (server-side only, maxfiy kalitlar)
+export const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+/** Rasm URL'i o'z Supabase storage domenimizga tegishli ekanini tekshiradi */
+export function isSupabaseStorageUrl(url) {
+    if (!url || typeof url !== 'string')
+        return false;
+    try {
+        const parsed = new URL(url);
+        if (SUPABASE_URL) {
+            const base = new URL(SUPABASE_URL);
+            return parsed.hostname === base.hostname && parsed.pathname.includes('/storage/v1/');
+        }
+        // Agar env da SUPABASE_URL hali kiritilmagan bo'lsa (dev/test):
+        return (parsed.hostname.endsWith('.supabase.co') || parsed.hostname.endsWith('.supabase.in')) &&
+            parsed.pathname.includes('/storage/v1/');
+    }
+    catch {
+        return false;
+    }
+}

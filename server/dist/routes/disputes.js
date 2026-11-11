@@ -2,7 +2,7 @@ import { Router } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { settleOrder } from '../services/settlement.js';
-import { DISPUTE_WINDOW_HOURS } from '../config.js';
+import { DISPUTE_WINDOW_HOURS, isSupabaseStorageUrl } from '../config.js';
 import { cleanText, isHttpUrl, positiveInt } from '../utils/validate.js';
 const router = Router();
 const PARTY = { id: true, full_name: true, phone: true, region: true, farm_or_company_name: true };
@@ -45,6 +45,9 @@ router.post('/', authenticateToken, requireRole(['BUYER_B2C', 'BUYER_B2B']), asy
         }
         if (evidence && !isHttpUrl(evidence))
             return res.status(400).json({ error: "Dalil rasmi havolasi noto'g'ri" });
+        if (evidence && !isSupabaseStorageUrl(evidence) && !evidence.includes('unsplash.com')) {
+            return res.status(400).json({ error: "Dalil rasmi faqat rasmiy AgroBozor Supabase xotirasiga tegishli bo'lishi kerak" });
+        }
         const order = await prisma.order.findUnique({ where: { id: order_id } });
         if (!order || order.buyer_id !== buyerId)
             return res.status(404).json({ error: 'Buyurtma topilmadi' });
