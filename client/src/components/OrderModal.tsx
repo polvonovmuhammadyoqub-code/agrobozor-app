@@ -25,9 +25,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   onSuccess,
 }) => {
   const { user, refreshUser } = useAuth();
-  if (!product) return null;
 
-  const [quantity, setQuantity] = useState<number>(product.min_order_kg || 1);
+  const [quantity, setQuantity] = useState<number>(product?.min_order_kg || 1);
   const [address, setAddress] = useState<string>(user?.region ? `${user.region}, Markaziy ko'cha 1` : '');
   const [schedule, setSchedule] = useState<string>(
     user?.role === 'BUYER_B2B' ? 'Har dushanba va payshanba soat 09:00 gacha' : ''
@@ -39,7 +38,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const productTotal = quantity * product.price_per_kg;
+  if (!product) return null; // hook'lardan KEYIN (React qoidasi)
+
+  const productTotal = Math.round(quantity * product.price_per_kg);
   const deliveryFee = 15000;
   const grandTotal = productTotal + deliveryFee;
 
@@ -64,7 +65,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
     setLoading(true);
     try {
-      await api.orders.create({
+      const created = await api.orders.create({
         product_id: product.id,
         quantity_kg: quantity,
         payment_method: paymentMethod,
@@ -72,7 +73,20 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         delivery_schedule: schedule || undefined,
       });
 
-      setSuccessMessage('Buyurtma muvaffaqiyatli rasmiylashtirildi! Mablag\' Escrow hisobida xavfsiz saqlanmoqda.');
+      // 2-qadam: to'lov. Muvaffaqiyatsiz bo'lsa buyurtma bekor qilinadi va ombor qoldig'i qaytadi.
+      let paid;
+      try {
+        paid = await api.orders.pay(created.id, paymentMethod);
+      } catch (payErr) {
+        await api.orders.cancel(created.id).catch(() => {});
+        throw payErr;
+      }
+
+      setSuccessMessage(
+        paid.pending_invoice
+          ? "Hisob-faktura shakllandi. Bank o'tkazmasi tasdiqlangach buyurtma faollashadi."
+          : "To'lov qabul qilindi! Mablag' Escrow hisobida xavfsiz saqlanmoqda."
+      );
       await refreshUser();
       setTimeout(() => {
         onSuccess();

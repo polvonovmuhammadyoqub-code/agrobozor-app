@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'agrobozor_secure_jwt_secret_token_key_2025';
+import prisma from '../db.js';
+import { JWT_SECRET } from '../config.js';
 
 export interface AuthUser {
   id: string;
@@ -15,20 +15,29 @@ export interface AuthRequest extends Request {
   user?: AuthUser;
 }
 
-export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
+// Token faqat foydalanuvchi ID'sini ishonchli deb hisoblaymiz; rol va KYC har safar bazadan olinadi.
+export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Avtorizatsiya talab qilinadi (Token yo\'q)' });
+    return res.status(401).json({ error: "Avtorizatsiya talab qilinadi (Token yo'q)" });
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
-    req.user = decoded;
+    const decoded = jwt.verify(token, JWT_SECRET) as { id?: string };
+    if (!decoded?.id) throw new Error('bad token');
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, phone: true, role: true, full_name: true, kyc_status: true },
+    });
+    if (!user) {
+      return res.status(401).json({ error: 'Foydalanuvchi topilmadi. Qaytadan kiring.' });
+    }
+    req.user = user;
     next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Yaroqsiz yoki muddati o\'tgan token' });
+  } catch {
+    return res.status(401).json({ error: "Yaroqsiz yoki muddati o'tgan token" });
   }
 };
 

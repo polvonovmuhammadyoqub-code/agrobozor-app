@@ -1,65 +1,49 @@
 import { Router, Response } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
+import { holdInEscrow } from '../services/settlement.js';
 
 const router = Router();
 
 // Barcha admin amallari uchun ADMIN ruxsatini talab qilamiz
 router.use(authenticateToken, requireRole(['ADMIN']));
 
-// 1. Real vaqtda hisoblanadigan KPI va statistika
+// 1. Statistika. GMV — haqiqatan to'langan buyurtmalar; daromad — bajarilgan hisob-kitoblar (tranzaksiyalar jurnali)
+const PAID_STATUSES = ['PAID_IN_ESCROW', 'CONFIRMED_BY_FARMER', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'DISPUTED'];
+
 router.get('/stats', async (_req: AuthRequest, res: Response) => {
   try {
-    // 1. Barcha buyurtmalar
-    const orders = await prisma.order.findMany();
-    const paidOrders = orders.filter(
-      (o) => o.status !== 'REFUNDED'
-    );
-
-    // GMV (Gross Merchandise Value)
-    const totalGmv = paidOrders.reduce((sum, o) => sum + o.total_paid, 0);
-
-    // Platforma sof daromadi = 10% komissiya + 3000 so'm marjalar
-    // COMPLETED bo'lgan yoki PAID_IN_ESCROW / IN_TRANSIT / DELIVERED bo'lgan
-    const platformNetRevenue = paidOrders.reduce(
-      (sum, o) => sum + (o.platform_commission + o.platform_logistics_margin),
-      0
-    );
-
-    // AOV (Average Order Value)
-    const aov = paidOrders.length > 0 ? Math.round(totalGmv / paidOrders.length) : 0;
-
-    // Foydalanuvchilar soni
-    const farmersCount = await prisma.user.count({ where: { role: 'FARMER' } });
-    const buyersCount = await prisma.user.count({
-      where: { OR: [{ role: 'BUYER_B2C' }, { role: 'BUYER_B2B' }] },
+    const paid = await prisma.order.aggregate({
+      where: { status: { in: PAID_STATUSES } },
+      _sum: { total_paid: true },
+      _count: true,
     });
-    const couriersCount = await prisma.user.count({ where: { role: 'COURIER' } });
-
-    // KYC navbatidagi fermerlar soni
-    const pendingKycCount = await prisma.user.count({
-      where: { role: 'FARMER', kyc_status: 'PENDING' },
+    const revenue = await prisma.transaction.aggregate({
+      where: { type: 'PLATFORM_COMMISSION' },
+      _sum: { amount: true },
     });
 
-    // Ochiq nizolar soni
-    const openDisputesCount = await prisma.dispute.count({
-      where: { status: 'OPEN' },
-    });
+    const totalGmv = paid._sum.total_paid || 0;
+    const aov = paid._count > 0 ? Math.round(totalGmv / paid._count) : 0;
 
-    // Mahsulotlar soni
-    const activeProductsCount = await prisma.product.count({
-      where: { is_active: true },
-    });
+    const [farmersCount, buyersCount, couriersCount, pendingKycCount, openDisputesCount, activeProductsCount, totalOrdersCount, grouped] =
+      await Promise.all([
+        prisma.user.count({ where: { role: 'FARMER' } }),
+        prisma.user.count({ where: { role: { in: ['BUYER_B2C', 'BUYER_B2B'] } } }),
+        prisma.user.count({ where: { role: 'COURIER' } }),
+        prisma.user.count({ where: { role: { in: ['FARMER', 'COURIER'] }, kyc_status: 'PENDING' } }),
+        prisma.dispute.count({ where: { status: 'OPEN' } }),
+        prisma.product.count({ where: { is_active: true } }),
+        prisma.order.count(),
+        prisma.order.groupBy({ by: ['status'], _count: true }),
+      ]);
 
-    // Statuslar bo'yicha taqsimot
     const statusCounts: Record<string, number> = {};
-    for (const o of orders) {
-      statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-    }
+    for (const g of grouped) statusCounts[g.status] = g._count;
 
     return res.json({
       totalGmv,
-      platformNetRevenue,
+      platformNetRevenue: revenue._sum.amount || 0,
       aov,
       farmersCount,
       buyersCount,
@@ -67,12 +51,29 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       pendingKycCount,
       openDisputesCount,
       activeProductsCount,
-      totalOrdersCount: orders.length,
+      totalOrdersCount,
       statusCounts,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error('Admin stats error:', err);
     return res.status(500).json({ error: 'Statistikani hisoblashda xatolik' });
+  }
+});
+
+// 1b. B2B hisob-faktura to'lovi bank orqali kelganini tasdiqlash -> pul escrow'ga tushadi
+router.post('/orders/:id/confirm-payment', async (req: AuthRequest, res: Response) => {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    await prisma.$transaction(async (tx) => {
+      const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID_IN_ESCROW' } });
+      if (r.count !== 1) throw new Error('STATE');
+      await holdInEscrow(tx, order);
+    });
+    return res.json({ message: "To'lov tasdiqlandi, mablag' escrow'ga o'tkazildi" });
+  } catch (err: any) {
+    if (err?.message === 'STATE') return res.status(400).json({ error: "Buyurtma to'lov kutmayapti" });
+    return res.status(500).json({ error: 'Tasdiqlashda xatolik' });
   }
 });
 
@@ -116,6 +117,10 @@ router.patch('/kyc/:userId', async (req: AuthRequest, res: Response) => {
     if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) {
       return res.status(400).json({ error: 'Noto\'g\'ri KYC status' });
     }
+
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (!target) return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+    if (target.role === 'ADMIN') return res.status(400).json({ error: 'Admin profilini o‘zgartirib bo‘lmaydi' });
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },

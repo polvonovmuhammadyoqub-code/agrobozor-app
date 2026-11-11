@@ -36,6 +36,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
+      case 'PENDING_PAYMENT':
+        return { label: 'To\'lov kutilmoqda', color: 'bg-orange-100 text-orange-800 border-orange-300' };
+      case 'CANCELLED':
+        return { label: 'Bekor qilindi', color: 'bg-gray-100 text-gray-600 border-gray-300' };
       case 'PAID_IN_ESCROW':
         return { label: 'To\'lov Escrowda Muzlatilgan', color: 'bg-amber-100 text-amber-800 border-amber-300' };
       case 'CONFIRMED_BY_FARMER':
@@ -99,6 +103,33 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     try {
       await api.orders.updateStatus(order.id, 'CONFIRMED_BY_FARMER');
       await refreshUser();
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Xatolik yuz berdi');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Fermer buyurtmani rad etadi (xaridorga to'liq qaytariladi)
+  const handleFarmerReject = async () => {
+    if (!confirm("Buyurtmani rad etasizmi? Mablag' xaridorga to'liq qaytariladi.")) return;
+    setLoadingAction('reject');
+    try {
+      await api.orders.reject(order.id);
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message || 'Xatolik yuz berdi');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Xaridor to'lanmagan buyurtmani bekor qiladi
+  const handleCancelUnpaid = async () => {
+    setLoadingAction('cancel');
+    try {
+      await api.orders.cancel(order.id);
       onRefresh();
     } catch (err: any) {
       alert(err.message || 'Xatolik yuz berdi');
@@ -295,7 +326,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
         <div className="flex items-center space-x-2">
           {/* Escrow kafolat eslatmasi */}
-          {order.status !== 'COMPLETED' && order.status !== 'REFUNDED' && (
+          {!['COMPLETED', 'REFUNDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(order.status) && (
             <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-xl">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>Escrowda himoyalangan</span>
@@ -304,6 +335,24 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {isBuyer && order.status === 'PENDING_PAYMENT' && (
+            <button
+              onClick={handleCancelUnpaid}
+              disabled={loadingAction === 'cancel'}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl disabled:opacity-50"
+            >
+              Bekor qilish
+            </button>
+          )}
+          {isFarmer && order.status === 'PAID_IN_ESCROW' && (
+            <button
+              onClick={handleFarmerReject}
+              disabled={loadingAction === 'reject'}
+              className="bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold px-4 py-2 rounded-xl disabled:opacity-50"
+            >
+              Rad etish
+            </button>
+          )}
           {/* Fermer tasdiqlashi */}
           {isFarmer && order.status === 'PAID_IN_ESCROW' && (
             <button

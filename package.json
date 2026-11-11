@@ -14,8 +14,9 @@
     "build:client": "npm run build --prefix client",
     "build:server": "npm run build --prefix server",
     "build": "npm run build:server && npm run build:client",
-    "postinstall": "npm run prisma:generate --prefix server",
-    "seed": "npm run seed --prefix server"
+    "db:push": "prisma db push --schema server/prisma/schema.prisma",
+    "create-admin": "npm run create-admin --prefix server",
+    "postinstall": "prisma generate --schema server/prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -23,7 +24,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.5.0"
   },
   "devDependencies": {
     "prisma": "^5.22.0"

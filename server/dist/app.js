@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -14,34 +16,41 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export const app = express();
-app.use(cors());
-app.use(express.json());
-// Marshrutlarni ro'yxatdan o'tkazish (/api va / uchun universal)
-function registerRoutes(prefix) {
-    app.use(`${prefix}/auth`, authRoutes);
-    app.use(`${prefix}/products`, productRoutes);
-    // Maxsus talab qilingan: /price-recommendation to'g'ridan-to'g'ri chaqiruv
-    app.use(`${prefix}/price-recommendation`, (req, res, next) => {
-        req.url = '/price-recommendation' + (req.url === '/' ? '' : req.url);
-        productRoutes(req, res, next);
-    });
-    app.use(`${prefix}/orders`, orderRoutes);
-    app.use(`${prefix}/disputes`, disputeRoutes);
-    app.use(`${prefix}/reviews`, reviewRoutes);
-    app.use(`${prefix}/admin`, adminRoutes);
-    app.use(`${prefix}/users`, userRoutes);
-    app.get(`${prefix}/health`, (_req, res) => {
-        res.json({
-            status: 'ok',
-            message: 'AgroBozor Backend API faol ishlamoqda',
-            timestamp: new Date().toISOString(),
-        });
-    });
-}
-// 1. Standart /api marshrutlari
-registerRoutes('/api');
-// 2. Vercel Serverless Function /api ni qirqib yuborishi mumkin bo'lgan holatlar uchun fallback
-registerRoutes('');
+app.set('trust proxy', 1); // Vercel proxy ortida haqiqiy IP uchun
+app.use(helmet({ contentSecurityPolicy: false }));
+// CORS sozlamasi: ko'rsatilgan domenlar yoki barcha domenlarga ruxsat berish
+const allowed = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
+app.use(cors({
+    origin: allowed.length ? allowed : true,
+    credentials: true,
+}));
+app.use(express.json({ limit: '1mb' }));
+// Brute-force va spamdan himoya
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
+    message: { error: "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring." } });
+const codeLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false,
+    message: { error: "Kod so'rovlari limiti tugadi. Keyinroq urinib ko'ring." } });
+const apiLimiter = rateLimit({ windowMs: 60 * 1000, limit: 240, standardHeaders: true, legacyHeaders: false });
+app.use('/api', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/verify-code', authLimiter);
+app.use('/api/auth/send-verification-code', codeLimiter);
+app.use('/api/auth', authRoutes);
+app.use('/api/products', productRoutes);
+// Eski mijoz kodi uchun qisqa yo'l: /api/price-recommendation
+app.use('/api/price-recommendation', (req, res, next) => {
+    req.url = '/price-recommendation' + (req.url === '/' ? '' : req.url);
+    productRoutes(req, res, next);
+});
+app.use('/api/orders', orderRoutes);
+app.use('/api/disputes', disputeRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', userRoutes);
+app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 // Productionda Vite build qilingan statik fayllarni xizmat ko'rsatish
 const clientDist = path.join(__dirname, '../../client/dist');
 app.use(express.static(clientDist));

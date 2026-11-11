@@ -3,6 +3,8 @@
  * Haqiqiy mijozlar uchun emailga tasdiqlash kodini yuborish
  */
 
+import { ALLOW_DEV_CODES } from '../config.js';
+
 export interface EmailSendResult {
   success: boolean;
   mode: 'resend' | 'custom_api' | 'simulated';
@@ -74,18 +76,21 @@ export async function sendVerificationEmail(
     }
   }
 
-  // 2. Fallback / Test rejimi (xatoliksiz, serverless muhitda ishonchli ishlash uchun)
-  console.log(`\n======================================================`);
-  console.log(`📬 [AgroBozor Email Verification]`);
-  console.log(`🎯 Qabul qiluvchi: ${cleanEmail}`);
-  console.log(`🔑 Tasdiqlash kodi: ${code}`);
-  console.log(`⏰ Amal qilish muddati: 10 daqiqa`);
-  console.log(`======================================================\n`);
+  // 2. Resend sozlanmagan yoki xatolik berdi
+  if (ALLOW_DEV_CODES) {
+    // Faqat dev/staging: kodni konsolga yozamiz va javobda qaytaramiz
+    console.log(`[DEV] Tasdiqlash kodi ${cleanEmail} uchun: ${code}`);
+    return {
+      success: true,
+      mode: 'simulated',
+      dev_code: code,
+      message: `Test rejimi: kod ekranda ko'rsatildi (email yuborilmadi)`,
+    };
+  }
 
   return {
-    success: true,
+    success: false,
     mode: 'simulated',
-    dev_code: code,
-    message: `Tasdiqlash kodi emailingizga yuborildi! Kod: ${code}`,
+    message: "Email xizmati sozlanmagan yoki vaqtincha ishlamayapti. Keyinroq urinib ko'ring.",
   };
 }

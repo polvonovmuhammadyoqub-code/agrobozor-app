@@ -167,7 +167,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
       setCountdown(60);
       if (res.dev_code) {
         setAutoCode(res.dev_code);
-        setServerNotice(`📬 Tasdiqlash kodi: ${res.dev_code} (Emailingizga yuborildi)`);
+        setServerNotice(`🧪 Test rejimi: kod ${res.dev_code} (email yuborilmadi)`);
       } else {
         setServerNotice(`📬 Tasdiqlash kodi ${cleanEmail} manziliga muvaffaqiyatli yuborildi!`);
       }
@@ -179,11 +179,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   };
 
   const validate = (): string | null => {
+    const cleanPhone = phone.replace(/\s/g, '');
     if (!fullName.trim()) return "To'liq ism-sharifni kiriting";
-    if (!phone.match(/^\+998\d{9}$/)) return "Telefon raqami noto'g'ri (+998XXXXXXXXX formatida)";
+    if (!cleanPhone.match(/^\+998\d{9}$/)) return "Telefon raqami noto'g'ri (+998XXXXXXXXX formatida)";
     if (!email.trim() || !email.includes('@')) return "To'g'ri email manzilini kiriting";
     if (!verificationCode.trim()) return "Emailingizga yuborilgan tasdiqlash kodini kiriting";
-    if (password.length < 6) return "Parol kamida 6 ta belgidan iborat bo'lishi kerak";
+    if (password.length < 8) return "Parol kamida 8 ta belgidan iborat bo'lishi kerak";
     if (password !== confirmPassword) return "Parollar mos kelmaydi";
     if (!region) return "Viloyat / Shaharni tanlang";
 
@@ -214,8 +215,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
     setLoading(true);
     try {
+      const cleanPhone = phone.replace(/\s/g, '');
       const payload: any = {
-        phone: phone.trim(),
+        phone: cleanPhone,
         email: email.trim().toLowerCase(),
         verification_code: verificationCode.trim(),
         password,
@@ -404,12 +406,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                     maxLength={6}
                     value={verificationCode}
                     onChange={(e) => setVerificationCode(e.target.value)}
-                    placeholder="Masalan: 482910 yoki 111111"
+                    placeholder="6 xonali kod"
                     className="w-full pl-9 pr-3 py-2 text-sm font-mono tracking-widest bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none font-bold"
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1">
-                  Emailingizga yuborilgan 6 xonali kodni kiriting (test uchun 111111 ham ishlaydi).
+                  Emailingizga yuborilgan 6 xonali kodni kiriting.
                 </p>
               </div>
 
@@ -562,7 +564,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Min. 6 ta belgi"
+                      placeholder="Min. 8 ta belgi"
                       className="w-full pl-9 pr-8 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
                     />
                     <button

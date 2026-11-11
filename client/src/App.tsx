@@ -75,6 +75,10 @@ const AppContent: React.FC = () => {
             setIsLoginOpen(true);
             return;
           }
+          if (user.role !== 'FARMER') {
+            alert("Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.");
+            return;
+          }
           setIsAddProductOpen(true);
         }}
       />
@@ -92,6 +96,10 @@ const AppContent: React.FC = () => {
             onOpenAddProduct={() => {
               if (!user) {
                 setIsLoginOpen(true);
+                return;
+              }
+              if (user.role !== 'FARMER') {
+                alert("Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.");
                 return;
               }
               setIsAddProductOpen(true);

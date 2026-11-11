@@ -53,10 +53,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   // Auth
   auth: {
-    login: (phone: string, password?: string, otp?: string) =>
+    login: (phone: string, password?: string, _otp?: string) =>
       request<{ user: User; token: string }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ phone, password, otp }),
+        body: JSON.stringify({ phone, password }),
       }),
     sendVerificationCode: (email: string) =>
       request<{ success: boolean; message: string; dev_code?: string }>('/auth/send-verification-code', {
@@ -90,6 +90,7 @@ export const api = {
       return request<Product[]>(`/products?${query.toString()}`);
     },
     getById: (id: string) => request<Product>(`/products/${id}`),
+    getMine: () => request<Product[]>('/products/mine/list'),
     create: (body: Partial<Product>) =>
       request<Product>('/products', {
         method: 'POST',
@@ -126,6 +127,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    pay: (id: string, payment_method?: string) =>
+      request<{ order: Order; pending_invoice?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
+        method: 'POST',
+        body: JSON.stringify({ payment_method }),
+      }),
+    cancel: (id: string) => request<{ message: string }>(`/orders/${id}/cancel`, { method: 'POST' }),
+    reject: (id: string) => request<{ message: string }>(`/orders/${id}/reject`, { method: 'POST' }),
     updateStatus: (id: string, status: string) =>
       request<Order>(`/orders/${id}/status`, {
         method: 'PATCH',

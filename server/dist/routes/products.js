@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import prisma from '../db.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
+import { AUTO_APPROVE_KYC } from '../config.js';
 const router = Router();
 // 1. Aqlli narx tavsiyasi API (/api/products/price-recommendation va /api/price-recommendation)
 router.get('/price-recommendation', async (req, res) => {
@@ -17,7 +19,7 @@ router.get('/price-recommendation', async (req, res) => {
             is_active: true,
         };
         if (regionStr) {
-            whereClause.region = { contains: regionStr };
+            whereClause.region = { contains: regionStr, mode: 'insensitive' };
         }
         let products = await prisma.product.findMany({
             where: whereClause,
@@ -78,27 +80,29 @@ router.get('/', async (req, res) => {
     try {
         const { category, region, min_price, max_price, min_rating, today_harvested, search, farmer_id, } = req.query;
         const where = {};
-        if (farmer_id) {
+        // Barcha ko'radigan ro'yxat: faol mahsulot + tasdiqlangan fermer.
+        // Fermer o'z mahsulotlarini (nofaol ham) faqat tizimga kirgan holda /products/mine orqali ko'radi.
+        where.is_active = true;
+        const farmerFilter = { kyc_status: 'APPROVED' };
+        if (farmer_id)
             where.farmer_id = String(farmer_id);
-        }
-        else {
-            where.is_active = true;
-        }
         if (category && category !== 'ALL') {
             where.category = String(category);
         }
         if (region && region !== 'ALL') {
-            where.region = { contains: String(region) };
+            where.region = { contains: String(region), mode: 'insensitive' };
         }
         if (search) {
-            where.title = { contains: String(search) };
+            where.title = { contains: String(search), mode: 'insensitive' };
         }
         if (min_price || max_price) {
             where.price_per_kg = {};
-            if (min_price)
-                where.price_per_kg.gte = parseFloat(String(min_price));
-            if (max_price)
-                where.price_per_kg.lte = parseFloat(String(max_price));
+            const lo = toNumber(min_price);
+            const hi = toNumber(max_price);
+            if (Number.isFinite(lo))
+                where.price_per_kg.gte = Math.round(lo);
+            if (Number.isFinite(hi))
+                where.price_per_kg.lte = Math.round(hi);
         }
         if (today_harvested === 'true') {
             // 24 soat ichida uzilgan
@@ -106,10 +110,11 @@ router.get('/', async (req, res) => {
             where.harvest_date = { gte: yesterday };
         }
         if (min_rating) {
-            where.farmer = {
-                rating: { gte: parseFloat(String(min_rating)) },
-            };
+            const mr = toNumber(min_rating);
+            if (Number.isFinite(mr))
+                farmerFilter.rating = { gte: mr };
         }
+        where.farmer = farmerFilter;
         const products = await prisma.product.findMany({
             where,
             include: {
@@ -122,7 +127,6 @@ router.get('/', async (req, res) => {
                         rating: true,
                         kyc_status: true,
                         is_premium: true,
-                        phone: true,
                     },
                 },
             },
@@ -135,6 +139,19 @@ router.get('/', async (req, res) => {
     }
     catch (err) {
         console.error('Get products error:', err);
+        return res.status(500).json({ error: 'Mahsulotlarni yuklashda xatolik' });
+    }
+});
+// 2b. Fermerning o'z mahsulotlari (nofaol ham)
+router.get('/mine/list', authenticateToken, requireRole(['FARMER']), async (req, res) => {
+    try {
+        const products = await prisma.product.findMany({
+            where: { farmer_id: req.user.id },
+            orderBy: { created_at: 'desc' },
+        });
+        return res.json(products);
+    }
+    catch {
         return res.status(500).json({ error: 'Mahsulotlarni yuklashda xatolik' });
     }
 });
@@ -154,7 +171,6 @@ router.get('/:id', async (req, res) => {
                         rating: true,
                         kyc_status: true,
                         is_premium: true,
-                        phone: true,
                         created_at: true,
                     },
                 },
@@ -176,30 +192,35 @@ router.get('/:id', async (req, res) => {
         return res.status(500).json({ error: 'Mahsulot ma\'lumotlarini olishda xatolik' });
     }
 });
-// 4. Yangi mahsulot qo'shish (Barcha ro'yxatdan o'tgan foydalanuvchilar va fermerlar uchun)
-router.post('/', authenticateToken, async (req, res) => {
+// 4. Yangi mahsulot qo'shish (faqat fermer; tekshiruvdan o'tmagan fermer mahsuloti ko'rinmaydi)
+router.post('/', authenticateToken, requireRole(['FARMER']), async (req, res) => {
     try {
         const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-        if (!user) {
+        if (!user)
             return res.status(404).json({ error: 'Foydalanuvchi topilmadi' });
+        if (user.kyc_status === 'REJECTED') {
+            return res.status(403).json({ error: 'Profilingiz tekshiruvdan o‘tmadi. Administratorga murojaat qiling.' });
         }
-        // Foydalanuvchini sotuvchi sifatida faollashtiramiz va tasdiqlaymiz
-        if (user.role !== 'FARMER' && user.role !== 'ADMIN') {
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { role: 'FARMER', kyc_status: 'APPROVED' },
-            });
-        }
-        else if (user.kyc_status !== 'APPROVED') {
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { kyc_status: 'APPROVED' },
-            });
-        }
-        const { title, category, price_per_kg, available_quantity_kg, min_order_kg, harvest_date, image_url, region, } = req.body;
-        if (!title || !category || !price_per_kg || !available_quantity_kg) {
-            return res.status(400).json({ error: 'Majburiy maydonlarni to\'ldiring' });
-        }
+        const b = req.body || {};
+        const title = cleanText(b.title, 120);
+        const price = positiveInt(b.price_per_kg);
+        const quantity = positiveNumber(b.available_quantity_kg);
+        const minOrder = b.min_order_kg ? positiveNumber(b.min_order_kg) : 1;
+        if (title.length < 2)
+            return res.status(400).json({ error: 'Mahsulot nomini kiriting' });
+        if (!CATEGORIES.includes(String(b.category)))
+            return res.status(400).json({ error: "Kategoriya noto'g'ri" });
+        if (!price || price > 10_000_000)
+            return res.status(400).json({ error: "Narx noto'g'ri (so'm/kg)" });
+        if (!quantity || quantity > 1_000_000)
+            return res.status(400).json({ error: "Miqdor noto'g'ri (kg)" });
+        if (!minOrder || minOrder > quantity)
+            return res.status(400).json({ error: "Minimal buyurtma miqdori noto'g'ri" });
+        if (b.image_url && !isHttpUrl(b.image_url))
+            return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+        let harvest = b.harvest_date ? new Date(b.harvest_date) : new Date();
+        if (isNaN(harvest.getTime()) || harvest.getTime() > Date.now() + 86400000)
+            harvest = new Date();
         const defaultImages = {
             MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
             SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
@@ -211,71 +232,106 @@ router.post('/', authenticateToken, async (req, res) => {
             data: {
                 farmer_id: user.id,
                 title,
-                category,
-                price_per_kg: parseFloat(price_per_kg),
-                available_quantity_kg: parseFloat(available_quantity_kg),
-                min_order_kg: min_order_kg ? parseFloat(min_order_kg) : 1,
-                harvest_date: harvest_date ? new Date(harvest_date) : new Date(),
-                image_url: image_url || defaultImages[category] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
-                region: region || user.region,
+                category: String(b.category),
+                price_per_kg: price,
+                available_quantity_kg: quantity,
+                min_order_kg: minOrder,
+                harvest_date: harvest,
+                image_url: b.image_url || defaultImages[String(b.category)],
+                region: cleanText(b.region, 120) || user.region,
                 is_active: true,
             },
         });
-        return res.status(201).json(product);
+        return res.status(201).json({
+            ...product,
+            pending_review: user.kyc_status !== 'APPROVED' && !AUTO_APPROVE_KYC,
+        });
     }
     catch (err) {
         console.error('Create product error:', err);
-        return res.status(500).json({ error: 'Mahsulot qo\'shishda xatolik yuz berdi' });
+        return res.status(500).json({ error: 'Mahsulot qo‘shishda xatolik yuz berdi' });
     }
 });
-// 5. Mahsulotni tahrirlash
+// 5. Mahsulotni tahrirlash (faqat egasi)
 router.put('/:id', authenticateToken, async (req, res) => {
     try {
-        const { id } = req.params;
-        const existing = await prisma.product.findUnique({ where: { id } });
-        if (!existing) {
+        const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
+        if (!existing)
             return res.status(404).json({ error: 'Mahsulot topilmadi' });
-        }
         if (existing.farmer_id !== req.user.id && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Ushbu mahsulotni faqat egasi o\'zgartira oladi' });
+            return res.status(403).json({ error: "Ushbu mahsulotni faqat egasi o'zgartira oladi" });
         }
-        const { title, category, price_per_kg, available_quantity_kg, min_order_kg, harvest_date, image_url, region, is_active, } = req.body;
-        const updated = await prisma.product.update({
-            where: { id },
-            data: {
-                title: title !== undefined ? title : existing.title,
-                category: category !== undefined ? category : existing.category,
-                price_per_kg: price_per_kg !== undefined ? parseFloat(price_per_kg) : existing.price_per_kg,
-                available_quantity_kg: available_quantity_kg !== undefined ? parseFloat(available_quantity_kg) : existing.available_quantity_kg,
-                min_order_kg: min_order_kg !== undefined ? parseFloat(min_order_kg) : existing.min_order_kg,
-                harvest_date: harvest_date !== undefined ? new Date(harvest_date) : existing.harvest_date,
-                image_url: image_url !== undefined ? image_url : existing.image_url,
-                region: region !== undefined ? region : existing.region,
-                is_active: is_active !== undefined ? is_active : existing.is_active,
-            },
-        });
+        const b = req.body || {};
+        const data = {};
+        if (b.title !== undefined) {
+            const t = cleanText(b.title, 120);
+            if (t.length < 2)
+                return res.status(400).json({ error: 'Nom juda qisqa' });
+            data.title = t;
+        }
+        if (b.category !== undefined) {
+            if (!CATEGORIES.includes(String(b.category)))
+                return res.status(400).json({ error: "Kategoriya noto'g'ri" });
+            data.category = String(b.category);
+        }
+        if (b.price_per_kg !== undefined) {
+            const p = positiveInt(b.price_per_kg);
+            if (!p)
+                return res.status(400).json({ error: "Narx noto'g'ri" });
+            data.price_per_kg = p;
+        }
+        if (b.available_quantity_kg !== undefined) {
+            const q = toNumber(b.available_quantity_kg);
+            if (!(q >= 0))
+                return res.status(400).json({ error: "Miqdor noto'g'ri" });
+            data.available_quantity_kg = q;
+        }
+        if (b.min_order_kg !== undefined) {
+            const m = positiveNumber(b.min_order_kg);
+            if (!m)
+                return res.status(400).json({ error: "Minimal miqdor noto'g'ri" });
+            data.min_order_kg = m;
+        }
+        if (b.image_url !== undefined) {
+            if (!isHttpUrl(b.image_url))
+                return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+            data.image_url = b.image_url;
+        }
+        if (b.region !== undefined)
+            data.region = cleanText(b.region, 120);
+        if (b.is_active !== undefined)
+            data.is_active = !!b.is_active;
+        if (b.harvest_date !== undefined) {
+            const h = new Date(b.harvest_date);
+            if (!isNaN(h.getTime()))
+                data.harvest_date = h;
+        }
+        const updated = await prisma.product.update({ where: { id: existing.id }, data });
         return res.json(updated);
     }
-    catch (err) {
+    catch {
         return res.status(500).json({ error: 'Mahsulotni tahrirlashda xatolik' });
     }
 });
-// 6. Mahsulotni o'chirish / faolsizlantirish
+// 6. Mahsulotni o'chirish: buyurtmalari bo'lsa o'chirmaymiz, faqat sotuvdan olamiz
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
-        const { id } = req.params;
-        const existing = await prisma.product.findUnique({ where: { id } });
-        if (!existing) {
+        const existing = await prisma.product.findUnique({ where: { id: req.params.id } });
+        if (!existing)
             return res.status(404).json({ error: 'Mahsulot topilmadi' });
-        }
         if (existing.farmer_id !== req.user.id && req.user.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Ushbu mahsulotni o\'chirishga ruxsat yo\'q' });
+            return res.status(403).json({ error: "Ushbu mahsulotni o'chirishga ruxsat yo'q" });
         }
-        await prisma.product.delete({ where: { id } });
-        return res.json({ message: 'Mahsulot muvaffaqiyatli o\'chirildi' });
+        const hasOrders = await prisma.order.count({ where: { product_id: existing.id } });
+        if (hasOrders > 0) {
+            await prisma.product.update({ where: { id: existing.id }, data: { is_active: false } });
+            return res.json({ message: "Mahsulot buyurtmalarga bog'liq, shuning uchun sotuvdan olindi" });
+        }
+        await prisma.product.delete({ where: { id: existing.id } });
+        return res.json({ message: "Mahsulot muvaffaqiyatli o'chirildi" });
     }
-    catch (err) {
-        return res.status(500).json({ error: 'Mahsulotni o\'chirishda xatolik' });
+    catch {
+        return res.status(500).json({ error: "Mahsulotni o'chirishda xatolik" });
     }
 });
 export default router;

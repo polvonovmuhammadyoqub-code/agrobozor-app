@@ -3,6 +3,8 @@ export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type Category = 'MEVALAR' | 'SABZAVOTLAR' | 'POLIZ' | 'SUT_GOSHT' | 'DON';
 export type PaymentMethod = 'CLICK' | 'PAYME' | 'UZCARD' | 'HUMO' | 'INVOICE_B2B';
 export type OrderStatus =
+  | 'PENDING_PAYMENT'
+  | 'CANCELLED'
   | 'PAID_IN_ESCROW'
   | 'CONFIRMED_BY_FARMER'
   | 'IN_TRANSIT'

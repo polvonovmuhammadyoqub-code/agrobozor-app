@@ -8,9 +8,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "prisma:generate": "node scripts/prepare-db.js && prisma generate",
-    "prisma:push": "node scripts/prepare-db.js && prisma db push --accept-data-loss",
-    "seed": "tsx prisma/seed.ts"
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "create-admin": "node scripts/create-admin.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -18,7 +18,9 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "helmet": "^8.0.0",
+    "express-rate-limit": "^7.5.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

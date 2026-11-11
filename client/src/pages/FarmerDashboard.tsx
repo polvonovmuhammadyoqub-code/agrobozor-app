@@ -45,7 +45,7 @@ export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
     try {
       const [ordersData, productsData] = await Promise.all([
         api.orders.getAll(),
-        api.products.getAll({ farmer_id: user.id }),
+        api.products.getMine(),
       ]);
       setFarmerOrders(ordersData);
       setFarmerProducts(productsData);
