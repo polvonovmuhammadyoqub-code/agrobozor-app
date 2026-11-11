@@ -23,14 +23,10 @@ export const app = express();
 
 app.set('trust proxy', 1); // Vercel proxy ortida haqiqiy IP uchun
 app.use(helmet({ contentSecurityPolicy: false }));
-
-// CORS sozlamasi: ko'rsatilgan domenlar yoki barcha domenlarga ruxsat berish
+// Frontend va API bir domenda (Vercel) — CORS faqat aniq ko'rsatilgan manzillar uchun
 const allowed = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
-app.use(cors({
-  origin: allowed.length ? allowed : true,
-  credentials: true,
-}));
-app.use(express.json({ limit: '1mb' }));
+app.use(cors({ origin: allowed.length ? allowed : false }));
+app.use(express.json({ limit: '100kb' }));
 
 // Brute-force va spamdan himoya
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,

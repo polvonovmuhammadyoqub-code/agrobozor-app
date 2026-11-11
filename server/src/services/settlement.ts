@@ -16,23 +16,10 @@ interface OrderMoney {
 
 async function platformUserId(tx: Tx): Promise<string> {
   const admin = await tx.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
-  if (admin) return admin.id;
-
-  // Agar admin hali yaratilmagan bo'lsa, platforma to'lovlari to'xtab qolmasligi uchun tizim hisobi yaratiladi
-  const systemAdmin = await tx.user.create({
-    data: {
-      phone: '+998712000000',
-      email: 'system@agrobozor.uz',
-      password_hash: '$2a$10$Defau1tAgroBozorP1atformAdminHashKeyNotForLoginDirect1y',
-      full_name: 'AgroBozor Platforma',
-      role: 'ADMIN',
-      region: 'Toshkent',
-      tin_or_passport: 'SYSTEM',
-      kyc_status: 'APPROVED',
-    },
-    select: { id: true },
-  });
-  return systemAdmin.id;
+  if (!admin) {
+    throw new Error("Platforma hisobi (ADMIN foydalanuvchi) topilmadi. 'npm run create-admin' ni ishga tushiring.");
+  }
+  return admin.id;
 }
 
 /** To'lov escrow'ga tushganda: pul platformada, fermer escrow balansida ko'rinadi. */

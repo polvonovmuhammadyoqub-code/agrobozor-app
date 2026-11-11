@@ -25,7 +25,7 @@ B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confir
 
 1. **PostgreSQL** oching (bepul: neon.tech yoki supabase.com).
 2. `server/.env.example` → `server/.env` (lokal) yoki Vercel → Environment Variables:
-   `DATABASE_URL`, `JWT_SECRET` (32+ belgi), `RESEND_API_KEY`, `EMAIL_FROM`, `PAYMENT_MODE`.
+   `DATABASE_URL`, `DIRECT_URL` (Supabase: ikkalasi ham Connect bo‘limida), `JWT_SECRET` (32+ belgi), `RESEND_API_KEY`, `EMAIL_FROM`, `PAYMENT_MODE`.
 3. Lokal:
    ```bash
    npm install
@@ -44,3 +44,12 @@ B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confir
 
 ## Keyingi qadamlar (MVP'dan keyin)
 Click/Payme integratsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · avtomatik testlar · Sentry.
+
+## Admin yaratish (kompyutersiz) — Supabase SQL Editor
+```sql
+insert into "User" (id, phone, email, password_hash, full_name, role, region, tin_or_passport, kyc_status)
+values (gen_random_uuid()::text, '+998901234567', 'admin@agrobozor.uz',
+        crypt('KAMIDA-12-BELGILI-PAROL', gen_salt('bf', 10)),
+        'AgroBozor Admin', 'ADMIN', 'Toshkent', 'ADMIN', 'APPROVED');
+```
+(`create extension if not exists pgcrypto;` kerak bo‘lsa avval shuni ishga tushiring.)

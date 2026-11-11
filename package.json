@@ -13,8 +13,8 @@
     "client": "npm run dev --prefix client",
     "build:client": "npm run build --prefix client",
     "build:server": "npm run build --prefix server",
-    "build": "npm run build:server && npm run build:client",
-    "db:push": "prisma db push --schema server/prisma/schema.prisma",
+    "build": "npm run db:push && npm run build:server && npm run build:client",
+    "db:push": "prisma db push --schema server/prisma/schema.prisma --skip-generate",
     "create-admin": "npm run create-admin --prefix server",
     "postinstall": "prisma generate --schema server/prisma/schema.prisma"
   },

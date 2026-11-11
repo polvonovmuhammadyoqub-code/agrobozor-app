@@ -11,22 +11,8 @@ router.post('/upgrade-premium', authenticateToken, async (req: AuthRequest, res:
   try {
     const userId = req.user!.id;
     const updated = await prisma.$transaction(async (tx) => {
-      let admin = await tx.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
-      if (!admin) {
-        admin = await tx.user.create({
-          data: {
-            phone: '+998712000000',
-            email: 'system@agrobozor.uz',
-            password_hash: '$2a$10$Defau1tAgroBozorP1atformAdminHashKeyNotForLoginDirect1y',
-            full_name: 'AgroBozor Platforma',
-            role: 'ADMIN',
-            region: 'Toshkent',
-            tin_or_passport: 'SYSTEM',
-            kyc_status: 'APPROVED',
-          },
-          select: { id: true },
-        });
-      }
+      const admin = await tx.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
+      if (!admin) throw new Error('NOADMIN');
 
       const paid = await tx.user.updateMany({
         where: { id: userId, is_premium: false, wallet_available: { gte: PREMIUM_FEE } },
