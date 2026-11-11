@@ -10,9 +10,19 @@ import {
   INVOICE_TIMEOUT_HOURS,
   DISPUTE_WINDOW_HOURS,
 } from '../config.js';
-import { chargeOrder } from '../services/payment.js';
-import { holdInEscrow, settleOrder } from '../services/settlement.js';
-import { cleanText, maskId, positiveNumber } from '../utils/validate.js';
+import { settleOrder } from '../services/settlement.js';
+import { cleanText, maskId, positiveNumber, formatUnitName } from '../utils/validate.js';
+import { isValidDistrict } from '../constants/districts.js';
+import {
+  payOrder,
+  farmerConfirm,
+  farmerReject,
+  courierPickup,
+  courierDeliver,
+  buyerComplete,
+  OrderActionError,
+} from '../services/orderActions.js';
+import { supabase } from '../services/supabase.js';
 
 const router = Router();
 const BUYER_ROLES = ['BUYER_B2C', 'BUYER_B2B'];
@@ -44,7 +54,43 @@ function sanitize(order: any, u: AuthUser) {
   if (u.role !== 'ADMIN' && o.transactions) {
     o.transactions = o.transactions.filter((t: any) => t.user_id === u.id);
   }
+  // PIN faqat o'sha buyurtmaning xaridoriga qaytadi. Fermer, kuryer va adminga delivery_pin HECH QACHON qaytmasin!
+  if (o.buyer_id !== u.id) {
+    delete o.delivery_pin;
+  }
   return o;
+}
+
+// Nizo dalili uchun xavfsiz 300 soniyalik signed URL biriktirish
+async function attachDisputeSignedUrl(order: any, u: AuthUser) {
+  if (order.dispute && order.dispute.evidence_image_url && order.dispute.evidence_image_url.startsWith('private-docs:')) {
+    const isAllowed = u.role === 'ADMIN' || order.buyer_id === u.id || order.farmer_id === u.id;
+    if (isAllowed && supabase) {
+      try {
+        const path = order.dispute.evidence_image_url.replace(/^private-docs:/, '');
+        const { data: signed } = await supabase.storage.from('private-docs').createSignedUrl(path, 300);
+        order.dispute.evidence_signed_url = signed?.signedUrl || null;
+      } catch {
+        order.dispute.evidence_signed_url = null;
+      }
+    } else {
+      order.dispute.evidence_signed_url = null;
+    }
+  }
+  return order;
+}
+
+// OrderActionError ni HTTP javobga aylantiruvchi yordamchi
+function handleActionError(err: unknown, res: Response) {
+  if (err instanceof OrderActionError) {
+    const statusMap: Record<string, number> = {
+      NOT_FOUND: 404, FORBIDDEN: 403, BAD_STATE: 409,
+      PAYMENT_FAILED: 402, STOCK: 400, VALIDATION: 400,
+    };
+    return res.status(statusMap[err.code] || 500).json({ error: err.message });
+  }
+  console.error('Order action error:', err);
+  return res.status(500).json({ error: 'Ichki xatolik yuz berdi' });
 }
 
 /** Muddati o'tgan to'lanmagan buyurtmalarni bekor qilib, ombor qoldig'ini qaytaradi (cron o'rniga lazy). */
@@ -103,11 +149,17 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     else if (user.role === 'COURIER') {
       where = { OR: [{ courier_id: user.id }, { status: 'CONFIRMED_BY_FARMER', courier_id: null }] };
     } else if (user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Ruxsat yo‘q' });
+      return res.status(403).json({ error: 'Ruxsat yo\u2018q' });
     }
 
     const orders = await prisma.order.findMany({ where, include: FULL_INCLUDE, orderBy: { created_at: 'desc' }, take: 200 });
-    return res.json(orders.map((o) => sanitize(o, user)));
+    const result = await Promise.all(
+      orders.map(async (o) => {
+        const sanitized = sanitize(o, user);
+        return attachDisputeSignedUrl(sanitized, user);
+      })
+    );
+    return res.json(result);
   } catch (err) {
     console.error('Get orders error:', err);
     return res.status(500).json({ error: 'Buyurtmalarni yuklashda xatolik' });
@@ -120,7 +172,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: FULL_INCLUDE });
     if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
     if (!isParticipant(order, req.user!)) return res.status(403).json({ error: "Bu buyurtmani ko'rishga ruxsat yo'q" });
-    return res.json(sanitize(order, req.user!));
+    const sanitized = sanitize(order, req.user!);
+    await attachDisputeSignedUrl(sanitized, req.user!);
+    return res.json(sanitized);
   } catch {
     return res.status(500).json({ error: "Buyurtma ma'lumotlarini yuklashda xatolik" });
   }
@@ -139,7 +193,7 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
       return res.status(400).json({ error: "Mahsulot, miqdor va to'liq manzilni kiriting" });
     }
     if (payment_method === 'INVOICE_B2B' && req.user!.role !== 'BUYER_B2B') {
-      return res.status(400).json({ error: 'Hisob-faktura orqali to‘lov faqat biznes hisoblar uchun' });
+      return res.status(400).json({ error: "Hisob-faktura orqali to'lov faqat biznes hisoblar uchun" });
     }
 
     const product = await prisma.product.findUnique({ where: { id: String(product_id) }, include: { farmer: true } });
@@ -148,15 +202,23 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
     }
     if (product.farmer_id === buyerId) return res.status(400).json({ error: "O'z mahsulotingizni sotib ola olmaysiz" });
     if (product.farmer.kyc_status !== 'APPROVED') {
-      return res.status(400).json({ error: 'Sotuvchi hali tekshiruvdan o‘tmagan' });
+      return res.status(400).json({ error: "Sotuvchi hali tekshiruvdan o'tmagan" });
     }
     if (qty < product.min_order_kg) {
-      return res.status(400).json({ error: `Minimal buyurtma miqdori: ${product.min_order_kg} kg` });
+      return res.status(400).json({
+        error: `Minimal buyurtma miqdori: ${product.min_order_kg} ${formatUnitName(product.unit)}`,
+      });
     }
 
     const product_total_amount = Math.round(qty * product.price_per_kg);
     const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
     const farmer_payout = product_total_amount - platform_commission;
+
+    let delivery_district: string | null = null;
+    if (req.body?.delivery_district) {
+      const dist = cleanText(req.body.delivery_district, 120);
+      if (isValidDistrict(dist)) delivery_district = dist;
+    }
 
     const order = await prisma.$transaction(async (tx) => {
       // Atomik band qilish: poyga holatida (oversell) ikki kishiga bir xil qoldiq sotilmaydi
@@ -182,6 +244,7 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
           payment_method,
           status: 'PENDING_PAYMENT',
           delivery_address,
+          delivery_district,
           delivery_schedule: delivery_schedule ? cleanText(delivery_schedule, 200) : null,
         },
       });
@@ -196,34 +259,13 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
 });
 
 // 4. To'lov: muvaffaqiyatli bo'lsa pul ESCROW'ga tushadi (PAID_IN_ESCROW)
+// Endi orderActions servisiga delegatsiya qilinadi
 router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRequest, res: Response) => {
   try {
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
-    if (!order || order.buyer_id !== req.user!.id) return res.status(404).json({ error: 'Buyurtma topilmadi' });
-    if (order.status !== 'PENDING_PAYMENT') {
-      return res.status(400).json({ error: "Bu buyurtma to'lov kutmayapti" });
-    }
-
-    // B2B hisob-faktura: admin bank o'tkazmasini tasdiqlagach escrow'ga tushadi
-    if (order.payment_method === 'INVOICE_B2B') {
-      return res.json({ order, pending_invoice: true, message: "Hisob-faktura shakllandi. To'lov tasdiqlangach buyurtma faollashadi." });
-    }
-
-    const charge = await chargeOrder(order.id, order.total_paid, order.payment_method);
-    if (!charge.ok) return res.status(402).json({ error: charge.error || "To'lov amalga oshmadi" });
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'PAID_IN_ESCROW' } });
-      if (r.count !== 1) throw new Error('STATE');
-      await holdInEscrow(tx, order);
-      return tx.order.findUnique({ where: { id: order.id } });
-    });
-
-    return res.json({ order: updated, reference: charge.reference });
-  } catch (err: any) {
-    if (err?.message === 'STATE') return res.status(409).json({ error: "Buyurtma holati o'zgargan, sahifani yangilang" });
-    console.error('Pay order error:', err);
-    return res.status(500).json({ error: "To'lovda xatolik yuz berdi" });
+    const result = await payOrder(req.user!, req.params.id);
+    return res.json(result);
+  } catch (err) {
+    return handleActionError(err, res);
   }
 });
 
@@ -245,84 +287,51 @@ router.post('/:id/cancel', authenticateToken, async (req: AuthRequest, res: Resp
 });
 
 // 6. Fermer buyurtmani rad etadi -> xaridorga to'liq qaytariladi
+// Endi orderActions servisiga delegatsiya qilinadi
 router.post('/:id/reject', authenticateToken, requireRole(['FARMER']), async (req: AuthRequest, res: Response) => {
   try {
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
-    if (!order || order.farmer_id !== req.user!.id) return res.status(404).json({ error: 'Buyurtma topilmadi' });
-    await prisma.$transaction(async (tx) => {
-      const r = await tx.order.updateMany({ where: { id: order.id, status: 'PAID_IN_ESCROW' }, data: { status: 'REFUNDED' } });
-      if (r.count !== 1) throw new Error('STATE');
-      await tx.product.update({ where: { id: order.product_id }, data: { available_quantity_kg: { increment: order.quantity_kg } } });
-      await settleOrder(tx, order, order.product_total_amount);
-    });
-    return res.json({ message: 'Buyurtma rad etildi, mablag‘ xaridorga qaytarildi' });
-  } catch (err: any) {
-    if (err?.message === 'STATE') return res.status(400).json({ error: 'Buyurtma hozirgi holatida rad etilmaydi' });
-    console.error('Reject order error:', err);
-    return res.status(500).json({ error: 'Rad etishda xatolik' });
+    const result = await farmerReject(req.user!, req.params.id);
+    return res.json(result);
+  } catch (err) {
+    return handleActionError(err, res);
   }
 });
 
 // 7. Holat o'zgartirish: qat'iy ketma-ketlik va egalik tekshiruvi
 //    PAID_IN_ESCROW -> CONFIRMED_BY_FARMER (fermer) -> IN_TRANSIT (kuryer oladi) -> DELIVERED (shu kuryer)
+// Endi orderActions servisiga delegatsiya qilinadi
 router.patch('/:id/status', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
     const status = String(req.body?.status ?? '');
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
-    if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    let updated;
 
-    let result;
     if (status === 'CONFIRMED_BY_FARMER') {
-      if (user.role !== 'FARMER' || order.farmer_id !== user.id) return res.status(403).json({ error: 'Faqat buyurtma egasi fermer tasdiqlay oladi' });
-      result = await prisma.order.updateMany({ where: { id: order.id, status: 'PAID_IN_ESCROW' }, data: { status } });
+      updated = await farmerConfirm(user, req.params.id);
     } else if (status === 'IN_TRANSIT') {
-      if (user.role !== 'COURIER') return res.status(403).json({ error: 'Faqat kuryer buyurtmani olishi mumkin' });
-      if (user.kyc_status !== 'APPROVED') return res.status(403).json({ error: 'Kuryer profili hali tasdiqlanmagan' });
-      // Atomik "claim": bir buyurtmani ikki kuryer ola olmaydi
-      result = await prisma.order.updateMany({
-        where: { id: order.id, status: 'CONFIRMED_BY_FARMER', courier_id: null },
-        data: { status, courier_id: user.id },
-      });
+      updated = await courierPickup(user, req.params.id);
     } else if (status === 'DELIVERED') {
-      if (user.role !== 'COURIER' || order.courier_id !== user.id) return res.status(403).json({ error: 'Faqat biriktirilgan kuryer yetkazildi deb belgilay oladi' });
-      result = await prisma.order.updateMany({
-        where: { id: order.id, status: 'IN_TRANSIT', courier_id: user.id },
-        data: { status, delivered_at: new Date() },
-      });
+      const pin = req.body?.pin;
+      updated = await courierDeliver(user, req.params.id, pin);
     } else {
       return res.status(400).json({ error: "Bu holatga to'g'ridan-to'g'ri o'tib bo'lmaydi" });
     }
 
-    if (result.count !== 1) return res.status(409).json({ error: "Buyurtma holati mos emas yoki allaqachon o'zgargan" });
-    const updated = await prisma.order.findUnique({ where: { id: order.id }, include: FULL_INCLUDE });
-    return res.json(sanitize(updated, user));
+    const full = await prisma.order.findUnique({ where: { id: req.params.id }, include: FULL_INCLUDE });
+    return res.json(sanitize(full, user));
   } catch (err) {
-    console.error('Update status error:', err);
-    return res.status(500).json({ error: 'Statusni yangilashda xatolik' });
+    return handleActionError(err, res);
   }
 });
 
 // 8. Xaridor "Qabul qildim" -> escrow'dan pul taqsimlanadi (faqat DELIVERED'dan, bir marta)
+// Endi orderActions servisiga delegatsiya qilinadi
 router.post('/:id/complete', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRequest, res: Response) => {
   try {
-    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
-    if (!order || order.buyer_id !== req.user!.id) return res.status(404).json({ error: 'Buyurtma topilmadi' });
-    if (order.status === 'DISPUTED') return res.status(400).json({ error: 'Bu buyurtma bo‘yicha nizo ochilgan' });
-    if (order.status !== 'DELIVERED') return res.status(400).json({ error: 'Mahsulot yetkazilgandan keyingina qabul qilish mumkin' });
-
-    const completed = await prisma.$transaction(async (tx) => {
-      const r = await tx.order.updateMany({ where: { id: order.id, status: 'DELIVERED' }, data: { status: 'COMPLETED' } });
-      if (r.count !== 1) throw new Error('STATE'); // ikki marta bosish / poyga
-      await settleOrder(tx, order, 0);
-      return tx.order.findUnique({ where: { id: order.id } });
-    });
-
-    return res.json({ message: "Buyurtma yakunlandi! Mablag'lar fermer va kuryerga o'tkazildi.", order: completed });
-  } catch (err: any) {
-    if (err?.message === 'STATE') return res.status(409).json({ error: 'Buyurtma allaqachon yakunlangan yoki holati o‘zgargan' });
-    console.error('Complete order error:', err);
-    return res.status(500).json({ error: 'Buyurtmani yakunlashda xatolik yuz berdi' });
+    const result = await buyerComplete(req.user!, req.params.id);
+    return res.json(result);
+  } catch (err) {
+    return handleActionError(err, res);
   }
 });
 
@@ -334,7 +343,7 @@ router.get('/:id/invoice', authenticateToken, async (req: AuthRequest, res: Resp
       include: { product: true, buyer: true, farmer: true },
     });
     if (!order) return res.status(404).json({ error: 'Hisob-faktura uchun buyurtma topilmadi' });
-    if (!isParticipant(order, req.user!)) return res.status(403).json({ error: 'Ruxsat yo‘q' });
+    if (!isParticipant(order, req.user!)) return res.status(403).json({ error: "Ruxsat yo'q" });
 
     return res.json({
       invoice_number: `AGRO-INV-${order.id.slice(0, 8).toUpperCase()}`,
@@ -358,6 +367,7 @@ router.get('/:id/invoice', authenticateToken, async (req: AuthRequest, res: Resp
           name: order.product.title,
           category: order.product.category,
           quantity_kg: order.quantity_kg,
+          unit: order.product.unit || 'KG',
           price_per_kg: order.product.price_per_kg,
           total_price: order.product_total_amount,
         },

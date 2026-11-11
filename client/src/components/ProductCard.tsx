@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
 import { useCart } from '../context/CartContext';
+import { formatQty, formatUnitName } from '../lib/units';
 import {
   MapPin,
   Star,
@@ -142,14 +143,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
         {/* Qoldiq va Minimal buyurtma */}
         <div className="pt-3 border-t border-gray-100 mt-2">
           <div className="flex justify-between text-xs text-gray-600 mb-2">
-            <span>Omborda qoldiq: <strong className="text-gray-900 font-bold">{product.available_quantity_kg} kg</strong></span>
-            <span>Min: <strong className="text-gray-900">{product.min_order_kg} kg</strong></span>
+            <span>Omborda qoldiq: <strong className="text-gray-900 font-bold">{formatQty(product.available_quantity_kg, product.unit)}</strong></span>
+            <span>Min: <strong className="text-gray-900">{formatQty(product.min_order_kg, product.unit)}</strong></span>
           </div>
 
           {/* Narx va Xarid qilish tugmasi */}
           <div className="flex items-center justify-between pt-1">
             <div>
-              <div className="text-[11px] text-gray-400 font-medium">1 kg uchun narx:</div>
+              <div className="text-[11px] text-gray-400 font-medium">1 {formatUnitName(product.unit)} uchun narx:</div>
               <div className="text-lg font-extrabold text-agro-green">
                 {product.price_per_kg.toLocaleString()} <span className="text-xs font-semibold text-gray-600">so'm</span>
               </div>

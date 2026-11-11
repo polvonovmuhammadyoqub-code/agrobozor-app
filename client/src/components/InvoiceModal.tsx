@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { InvoiceData } from '../types';
 import { api } from '../lib/api';
+import { formatQty, formatUnitName } from '../lib/units';
 import { X, Printer, ShieldCheck, Building2, CheckCircle2 } from 'lucide-react';
 
 interface InvoiceModalProps {
@@ -131,7 +132,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ orderId, onClose }) 
                       <th className="py-2">№</th>
                       <th className="py-2">Mahsulot nomi</th>
                       <th className="py-2">Kategoriya</th>
-                      <th className="py-2 text-right">Miqdor (kg)</th>
+                      <th className="py-2 text-right">Miqdor</th>
                       <th className="py-2 text-right">Narxi (so'm)</th>
                       <th className="py-2 text-right">Jami (so'm)</th>
                     </tr>
@@ -142,8 +143,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ orderId, onClose }) 
                         <td className="py-2.5 text-gray-400">{idx + 1}</td>
                         <td className="py-2.5 font-bold text-gray-900">{it.name}</td>
                         <td className="py-2.5 text-gray-500">{it.category}</td>
-                        <td className="py-2.5 text-right font-bold">{it.quantity_kg}</td>
-                        <td className="py-2.5 text-right">{it.price_per_kg.toLocaleString()}</td>
+                        <td className="py-2.5 text-right font-bold">{formatQty(it.quantity_kg, it.unit)}</td>
+                        <td className="py-2.5 text-right">{it.price_per_kg.toLocaleString()} / {formatUnitName(it.unit)}</td>
                         <td className="py-2.5 text-right font-bold text-gray-900">
                           {it.total_price.toLocaleString()}
                         </td>

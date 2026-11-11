@@ -1,10 +1,35 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
-import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
-import { AUTO_APPROVE_KYC } from '../config.js';
+import {
+  CATEGORIES,
+  cleanText,
+  isHttpUrl,
+  positiveInt,
+  positiveNumber,
+  toNumber,
+  ALLOWED_UNITS,
+  ALLOWED_PICKUP_TIME_SLOTS,
+  formatUnitName,
+} from '../utils/validate.js';
+import { AUTO_APPROVE_KYC, isSupabaseStorageUrl, isAllowedDefaultImage, DEFAULT_PRODUCT_IMAGES } from '../config.js';
+import { isValidDistrict } from '../constants/districts.js';
 
 const router = Router();
+
+// 1a. Fermerning oxirgi e'loni ("Oxirgi e'lonni takrorlash" uchun)
+router.get('/farmer/last', authenticateToken, requireRole(['FARMER']), async (req: AuthRequest, res: Response) => {
+  try {
+    const last = await prisma.product.findFirst({
+      where: { farmer_id: req.user!.id },
+      orderBy: { created_at: 'desc' },
+    });
+    return res.json(last);
+  } catch (err) {
+    console.error('Get last product error:', err);
+    return res.status(500).json({ error: "Oxirgi mahsulotni olishda xatolik" });
+  }
+});
 
 // 1. Aqlli narx tavsiyasi API (/api/products/price-recommendation va /api/price-recommendation)
 router.get('/price-recommendation', async (req: Request, res: Response) => {
@@ -236,35 +261,89 @@ router.post('/', authenticateToken, requireRole(['FARMER']), async (req: AuthReq
     const quantity = positiveNumber(b.available_quantity_kg);
     const minOrder = b.min_order_kg ? positiveNumber(b.min_order_kg) : 1;
 
+    // Birlik tekshiruvi (oq ro'yxat)
+    const unitRaw = b.unit ? String(b.unit).toUpperCase() : 'KG';
+    if (!ALLOWED_UNITS.includes(unitRaw as any)) {
+      return res.status(400).json({ error: "Birlik noto'g'ri (KG, DONA, LITR, BANKA, QUTI ruxsat etilgan)" });
+    }
+    const unit = unitRaw;
+
     if (title.length < 2) return res.status(400).json({ error: 'Mahsulot nomini kiriting' });
     if (!CATEGORIES.includes(String(b.category))) return res.status(400).json({ error: "Kategoriya noto'g'ri" });
-    if (!price || price > 10_000_000) return res.status(400).json({ error: "Narx noto'g'ri (so'm/kg)" });
-    if (!quantity || quantity > 1_000_000) return res.status(400).json({ error: "Miqdor noto'g'ri (kg)" });
+    if (!price || price > 10_000_000) return res.status(400).json({ error: "Narx noto'g'ri (butun so'm)" });
+    if (!quantity || quantity > 1_000_000) return res.status(400).json({ error: "Miqdor noto'g'ri" });
     if (!minOrder || minOrder > quantity) return res.status(400).json({ error: "Minimal buyurtma miqdori noto'g'ri" });
-    if (b.image_url && !isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+
+    // Olib ketish ma'lumotlari tekshiruvi
+    const pickup_district = b.pickup_district ? cleanText(b.pickup_district, 120) : null;
+    if (pickup_district && !isValidDistrict(pickup_district)) {
+      return res.status(400).json({ error: "Olib ketish tumani ro'yxatda mavjud emas" });
+    }
+
+    const pickup_window = b.pickup_window ? cleanText(b.pickup_window, 40) : null;
+    if (pickup_window && !ALLOWED_PICKUP_TIME_SLOTS.includes(pickup_window as any)) {
+      return res.status(400).json({ error: "Olib ketish vaqt oralig'i noto'g'ri (06:00–09:00, 09:00–12:00, 12:00–16:00, 16:00–20:00)" });
+    }
+
+    let pickup_lat: number | null = null;
+    let pickup_lng: number | null = null;
+    if (b.pickup_lat !== undefined && b.pickup_lat !== null && b.pickup_lat !== '') {
+      const lat = toNumber(b.pickup_lat);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return res.status(400).json({ error: "pickup_lat -90 va 90 oralig'ida bo'lishi kerak" });
+      }
+      pickup_lat = lat;
+    }
+    if (b.pickup_lng !== undefined && b.pickup_lng !== null && b.pickup_lng !== '') {
+      const lng = toNumber(b.pickup_lng);
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: "pickup_lng -180 va 180 oralig'ida bo'lishi kerak" });
+      }
+      pickup_lng = lng;
+    }
+    const pickup_address = b.pickup_address ? cleanText(b.pickup_address, 200) : null;
+
+    // Rasm havolalari: faqat rasmiy Supabase storage domenidan va o'z papkasidan bo'lishi tekshiriladi
+    const imageUrls: string[] = Array.isArray(b.image_urls)
+      ? b.image_urls.map((u: any) => String(u).trim()).filter(Boolean)
+      : [];
+
+    for (const u of imageUrls) {
+      if (!isHttpUrl(u) || !isSupabaseStorageUrl(u, user.id)) {
+        return res.status(400).json({ error: "Yuklangan rasm faqat o'zingizning rasmiy AgroBozor Supabase xotirangizga tegishli bo'lishi kerak" });
+      }
+    }
+
+    if (b.image_url) {
+      if (!isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+      if (!isSupabaseStorageUrl(b.image_url, user.id) && !isAllowedDefaultImage(b.image_url)) {
+        return res.status(400).json({ error: "Rasm havolasi faqat Supabase xotirangizdan yoki standart kutubxonadan bo'lishi kerak" });
+      }
+    }
 
     let harvest = b.harvest_date ? new Date(b.harvest_date) : new Date();
     if (isNaN(harvest.getTime()) || harvest.getTime() > Date.now() + 86400000) harvest = new Date();
 
-    const defaultImages: Record<string, string> = {
-      MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
-      SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
-      POLIZ: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
-      SUT_GOSHT: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
-      DON: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-    };
+    const finalImageUrl = imageUrls[0] || b.image_url || DEFAULT_PRODUCT_IMAGES[String(b.category)] || '';
 
     const product = await prisma.product.create({
       data: {
         farmer_id: user.id,
         title,
         category: String(b.category),
+        unit,
         price_per_kg: price,
         available_quantity_kg: quantity,
         min_order_kg: minOrder,
         harvest_date: harvest,
-        image_url: b.image_url || defaultImages[String(b.category)],
+        image_url: finalImageUrl,
+        image_urls: imageUrls.length > 0 ? imageUrls : [finalImageUrl],
         region: cleanText(b.region, 120) || user.region,
+        pickup_district,
+        pickup_address,
+        pickup_window,
+        pickup_lat,
+        pickup_lng,
         is_active: true,
       },
     });
@@ -314,9 +393,64 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       if (!m) return res.status(400).json({ error: "Minimal miqdor noto'g'ri" });
       data.min_order_kg = m;
     }
+    const farmerId = existing.farmer_id;
+    if (b.image_urls !== undefined) {
+      if (!Array.isArray(b.image_urls)) return res.status(400).json({ error: "image_urls massiv bo'lishi kerak" });
+      const urls = b.image_urls.map((u: any) => String(u).trim()).filter(Boolean);
+      for (const u of urls) {
+        if (!isHttpUrl(u) || !isSupabaseStorageUrl(u, farmerId)) {
+          return res.status(400).json({ error: "Yuklangan rasm faqat o'zingizning rasmiy AgroBozor Supabase xotirangizga tegishli bo'lishi kerak" });
+        }
+      }
+      data.image_urls = urls;
+      if (urls.length > 0) {
+        data.image_url = urls[0];
+      }
+    }
     if (b.image_url !== undefined) {
       if (!isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+      if (!isSupabaseStorageUrl(b.image_url, farmerId) && !isAllowedDefaultImage(b.image_url)) {
+        return res.status(400).json({ error: "Rasm havolasi faqat Supabase xotirangizdan yoki standart kutubxonadan bo'lishi kerak" });
+      }
       data.image_url = b.image_url;
+    }
+    if (b.unit !== undefined) {
+      const u = String(b.unit).toUpperCase();
+      if (!ALLOWED_UNITS.includes(u as any)) return res.status(400).json({ error: "Birlik noto'g'ri (KG, DONA, LITR, BANKA, QUTI)" });
+      data.unit = u;
+    }
+    if (b.pickup_district !== undefined) {
+      const dist = b.pickup_district ? cleanText(b.pickup_district, 120) : null;
+      if (dist && !isValidDistrict(dist)) return res.status(400).json({ error: "Olib ketish tumani noto'g'ri" });
+      data.pickup_district = dist;
+    }
+    if (b.pickup_address !== undefined) {
+      data.pickup_address = b.pickup_address ? cleanText(b.pickup_address, 200) : null;
+    }
+    if (b.pickup_window !== undefined) {
+      const w = b.pickup_window ? cleanText(b.pickup_window, 40) : null;
+      if (w && !ALLOWED_PICKUP_TIME_SLOTS.includes(w as any)) {
+        return res.status(400).json({ error: "Olib ketish vaqt oralig'i noto'g'ri" });
+      }
+      data.pickup_window = w;
+    }
+    if (b.pickup_lat !== undefined) {
+      if (b.pickup_lat === null || b.pickup_lat === '') {
+        data.pickup_lat = null;
+      } else {
+        const lat = toNumber(b.pickup_lat);
+        if (isNaN(lat) || lat < -90 || lat > 90) return res.status(400).json({ error: "pickup_lat -90 va 90 oralig'ida bo'lishi kerak" });
+        data.pickup_lat = lat;
+      }
+    }
+    if (b.pickup_lng !== undefined) {
+      if (b.pickup_lng === null || b.pickup_lng === '') {
+        data.pickup_lng = null;
+      } else {
+        const lng = toNumber(b.pickup_lng);
+        if (isNaN(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: "pickup_lng -180 va 180 oralig'ida bo'lishi kerak" });
+        data.pickup_lng = lng;
+      }
     }
     if (b.region !== undefined) data.region = cleanText(b.region, 120);
     if (b.is_active !== undefined) data.is_active = !!b.is_active;

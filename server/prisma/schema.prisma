@@ -26,6 +26,13 @@ model User {
   rating              Float    @default(5.0)
   created_at          DateTime @default(now())
 
+  // Phase-1: yangi maydonlar (barchasi nullable yoki default bilan)
+  telegram_chat_id    String?
+  language            String   @default("uz")
+  is_online           Boolean  @default(false)  // kuryer uchun
+  vehicle_type        String?  // MOTO, CAR, VAN, COLD_VAN
+  district            String?
+
   // Relations
   products            Product[]      @relation("FarmerProducts")
   buyer_orders        Order[]        @relation("BuyerOrders")
@@ -35,6 +42,8 @@ model User {
   disputes            Dispute[]
   reviews_given       Review[]       @relation("Reviewer")
   reviews_received    Review[]       @relation("ReviewTarget")
+  notifications       Notification[]
+  audit_logs          AuditLog[]
 }
 
 model Product {
@@ -42,14 +51,23 @@ model Product {
   farmer_id             String
   title                 String
   category              String   // 'MEVALAR', 'SABZAVOTLAR', 'POLIZ', 'SUT_GOSHT', 'DON'
-  price_per_kg          Int
-  available_quantity_kg Float
-  min_order_kg          Float    @default(1)
+  price_per_kg          Int      // tanlangan birlikdagi narx (nom tarixiy, aslida «narx per birlik»)
+  available_quantity_kg Float    // tanlangan birlikdagi mavjud miqdor
+  min_order_kg          Float    @default(1) // tanlangan birlikdagi minimal buyurtma
   harvest_date          DateTime
   image_url             String
   region                String
   is_active             Boolean  @default(true)
   created_at            DateTime @default(now())
+
+  // Phase-1: yangi maydonlar
+  unit                  String   @default("KG") // KG, DONA, LITR, BANKA, QUTI
+  image_urls            String[] @default([])   // ko'p rasmlar; birinchisi image_url bilan sinxron
+  pickup_district       String?
+  pickup_address        String?
+  pickup_lat            Float?
+  pickup_lng            Float?
+  pickup_window         String?  // masalan "06:00–09:00"
 
   @@index([is_active, category])
 
@@ -64,7 +82,7 @@ model Order {
   farmer_id                 String
   courier_id                String?
   product_id                String
-  quantity_kg               Float
+  quantity_kg               Float         // tanlangan birlikdagi miqdor
   product_total_amount      Int
   delivery_fee              Int         @default(15000)
   total_paid                Int
@@ -79,6 +97,16 @@ model Order {
   created_at                DateTime      @default(now())
   delivered_at              DateTime?
 
+  // Phase-1: yangi maydonlar
+  delivery_pin              String?
+  delivery_pin_attempts     Int           @default(0)
+  delivery_district         String?
+  delivery_lat              Float?
+  delivery_lng              Float?
+  paid_at                   DateTime?
+  confirmed_at              DateTime?
+  picked_up_at              DateTime?
+
   // Relations
   buyer                     User          @relation("BuyerOrders", fields: [buyer_id], references: [id])
   farmer                    User          @relation("FarmerOrders", fields: [farmer_id], references: [id])
@@ -87,6 +115,8 @@ model Order {
   transactions              Transaction[]
   dispute                   Dispute?
   reviews                   Review[]
+  notifications             Notification[]
+  audit_logs                AuditLog[]
 }
 
 model Transaction {
@@ -118,6 +148,23 @@ model Dispute {
   buyer              User     @relation(fields: [buyer_id], references: [id])
 }
 
+model Notification {
+  id         String    @id @default(uuid())
+  user_id    String
+  kind       String    // xabar turi: ORDER_PAID, FARMER_CONFIRMED, DELIVERED va h.k.
+  title      String
+  body       String
+  order_id   String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  // Relations
+  user       User      @relation(fields: [user_id], references: [id])
+  order      Order?    @relation(fields: [order_id], references: [id])
+
+  @@index([user_id, created_at])
+}
+
 model Review {
   id             String   @id @default(uuid())
   order_id       String
@@ -131,6 +178,22 @@ model Review {
   order          Order    @relation(fields: [order_id], references: [id])
   reviewer       User     @relation("Reviewer", fields: [reviewer_id], references: [id])
   target_user    User     @relation("ReviewTarget", fields: [target_user_id], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actor_id   String
+  action     String   // 'ORDER_DELIVER_OVERRIDE', 'ORDER_RESET_PIN', etc.
+  order_id   String?
+  reason     String?
+  created_at DateTime @default(now())
+
+  // Relations
+  actor      User     @relation(fields: [actor_id], references: [id])
+  order      Order?   @relation(fields: [order_id], references: [id])
+
+  @@index([actor_id, created_at])
+  @@index([order_id, created_at])
 }
 
 model EmailVerification {

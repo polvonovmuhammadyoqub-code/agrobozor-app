@@ -26,6 +26,11 @@ export interface User {
   full_name: string;
   role: Role;
   region: string;
+  district?: string | null;
+  telegram_chat_id?: string | null;
+  language?: string;
+  is_online?: boolean;
+  vehicle_type?: string | null;
   tin_or_passport: string;
   farm_or_company_name?: string | null;
   kyc_status: KycStatus;
@@ -46,6 +51,13 @@ export interface Product {
   min_order_kg: number;
   harvest_date: string;
   image_url: string;
+  image_urls?: string[];
+  unit?: string;
+  pickup_district?: string | null;
+  pickup_address?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  pickup_window?: string | null;
   region: string;
   is_active: boolean;
   created_at: string;
@@ -79,6 +91,9 @@ export interface Order {
   status: OrderStatus;
   delivery_address: string;
   delivery_schedule?: string | null;
+  delivery_district?: string | null;
+  delivery_pin?: string | null;
+  delivery_pin_attempts?: number;
   created_at: string;
   product: Product;
   buyer: {
@@ -115,6 +130,7 @@ export interface Dispute {
   buyer_id: string;
   reason: string;
   evidence_image_url?: string | null;
+  evidence_signed_url?: string | null;
   status: DisputeStatus;
   refund_amount?: number | null;
   admin_comment?: string | null;
@@ -205,6 +221,7 @@ export interface InvoiceData {
     name: string;
     category: string;
     quantity_kg: number;
+    unit?: string;
     price_per_kg: number;
     total_price: number;
   }>;

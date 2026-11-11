@@ -12,6 +12,7 @@ import disputeRoutes from './routes/disputes.js';
 import reviewRoutes from './routes/reviews.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/users.js';
+import uploadRoutes from './routes/uploads.js';
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,7 @@ app.use('/api/disputes', disputeRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/uploads', uploadRoutes);
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
