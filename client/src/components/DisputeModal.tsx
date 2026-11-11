@@ -92,7 +92,7 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
               bucket="private-docs"
               urls={evidenceUrls}
               onChange={setEvidenceUrls}
-              maxImages={3}
+              maxImages={1}
               label="Dalil fotosurati (ixtiyoriy)"
               helperText="Kamera orqali suratga oling yoki galereyadan tanlang (private-docs xavfsiz xotirasiga saqlanadi)"
             />

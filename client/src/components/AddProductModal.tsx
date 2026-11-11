@@ -33,9 +33,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [price, setPrice] = useState<string>('');
   const [quantity, setQuantity] = useState<string>('500');
   const [minOrder, setMinOrder] = useState<string>('2');
-  const [imageUrl, setImageUrl] = useState<string>(
-    'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80'
-  );
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [harvestDate, setHarvestDate] = useState<string>(
     new Date().toISOString().slice(0, 16)
@@ -79,15 +76,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
 
   const handleCategoryChange = (newCat: Category) => {
     setCategory(newCat);
-    // Avtomatik mos rasm taklifi
-    const defaults: Record<Category, string> = {
-      MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
-      SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
-      POLIZ: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
-      SUT_GOSHT: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
-      DON: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-    };
-    setImageUrl(defaults[newCat]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,8 +96,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         price_per_kg: parseFloat(price),
         available_quantity_kg: parseFloat(quantity),
         min_order_kg: parseFloat(minOrder) || 1,
-        image_url: imageUrls[0] || imageUrl,
-        image_urls: imageUrls.length > 0 ? imageUrls : [imageUrl],
+        image_url: imageUrls.length > 0 ? imageUrls[0] : undefined,
+        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
         harvest_date: new Date(harvestDate).toISOString(),
       });
       await refreshUser();
@@ -283,15 +271,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             <ImageUploader
               bucket="product-images"
               urls={imageUrls}
-              onChange={(urls) => {
-                setImageUrls(urls);
-                if (urls.length > 0) {
-                  setImageUrl(urls[0]);
-                }
-              }}
+              onChange={setImageUrls}
               maxImages={5}
-              label="Mahsulot fotosuratlari"
-              helperText="Kamera orqali suratga oling yoki galereyadan 5 tagacha rasm yuklang (birinchisi asosiy muqova bo'ladi)"
+              label="Mahsulot fotosuratlari (ixtiyoriy)"
+              helperText="Kamera orqali suratga oling yoki galereyadan 5 tagacha rasm yuklang (agar yuklanmasa, standart rasm qo'yiladi)"
             />
           </div>
 
