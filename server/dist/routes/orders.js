@@ -5,6 +5,7 @@ import { DELIVERY_FEE, COURIER_PAYOUT, LOGISTICS_MARGIN, COMMISSION_RATE, PAYMEN
 import { settleOrder } from '../services/settlement.js';
 import { cleanText, maskId, positiveNumber } from '../utils/validate.js';
 import { payOrder, farmerConfirm, farmerReject, courierPickup, courierDeliver, buyerComplete, OrderActionError, } from '../services/orderActions.js';
+import { supabase } from '../services/supabase.js';
 const router = Router();
 const BUYER_ROLES = ['BUYER_B2C', 'BUYER_B2B'];
 const METHODS = ['CLICK', 'PAYME', 'UZCARD', 'HUMO', 'INVOICE_B2B'];
@@ -33,6 +34,26 @@ function sanitize(order, u) {
         o.transactions = o.transactions.filter((t) => t.user_id === u.id);
     }
     return o;
+}
+// Nizo dalili uchun xavfsiz 300 soniyalik signed URL biriktirish
+async function attachDisputeSignedUrl(order, u) {
+    if (order.dispute && order.dispute.evidence_image_url && order.dispute.evidence_image_url.startsWith('private-docs:')) {
+        const isAllowed = u.role === 'ADMIN' || order.buyer_id === u.id || order.farmer_id === u.id;
+        if (isAllowed && supabase) {
+            try {
+                const path = order.dispute.evidence_image_url.replace(/^private-docs:/, '');
+                const { data: signed } = await supabase.storage.from('private-docs').createSignedUrl(path, 300);
+                order.dispute.evidence_signed_url = signed?.signedUrl || null;
+            }
+            catch {
+                order.dispute.evidence_signed_url = null;
+            }
+        }
+        else {
+            order.dispute.evidence_signed_url = null;
+        }
+    }
+    return order;
 }
 // OrderActionError ni HTTP javobga aylantiruvchi yordamchi
 function handleActionError(err, res) {
@@ -108,7 +129,11 @@ router.get('/', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Ruxsat yo\u2018q' });
         }
         const orders = await prisma.order.findMany({ where, include: FULL_INCLUDE, orderBy: { created_at: 'desc' }, take: 200 });
-        return res.json(orders.map((o) => sanitize(o, user)));
+        const result = await Promise.all(orders.map(async (o) => {
+            const sanitized = sanitize(o, user);
+            return attachDisputeSignedUrl(sanitized, user);
+        }));
+        return res.json(result);
     }
     catch (err) {
         console.error('Get orders error:', err);
@@ -123,7 +148,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Buyurtma topilmadi' });
         if (!isParticipant(order, req.user))
             return res.status(403).json({ error: "Bu buyurtmani ko'rishga ruxsat yo'q" });
-        return res.json(sanitize(order, req.user));
+        const sanitized = sanitize(order, req.user);
+        await attachDisputeSignedUrl(sanitized, req.user);
+        return res.json(sanitized);
     }
     catch {
         return res.status(500).json({ error: "Buyurtma ma'lumotlarini yuklashda xatolik" });
