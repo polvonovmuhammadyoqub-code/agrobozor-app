@@ -45,6 +45,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
             }
           }
         }
+        if (d.order) {
+          delete (d.order as any).delivery_pin;
+        }
+
         return {
           ...d,
           evidence_signed_url,
