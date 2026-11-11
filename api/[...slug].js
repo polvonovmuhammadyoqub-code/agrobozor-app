@@ -4,7 +4,9 @@ export default function handler(req, res) {
   try {
     if (req.query && req.query.slug) {
       const slugPath = Array.isArray(req.query.slug) ? req.query.slug.join('/') : req.query.slug;
-      req.url = '/api/' + slugPath;
+      const urlParts = (req.url || '').split('?');
+      const queryString = urlParts[1] ? '?' + urlParts[1] : '';
+      req.url = '/api/' + slugPath + queryString;
     }
     return app(req, res);
   } catch (error) {

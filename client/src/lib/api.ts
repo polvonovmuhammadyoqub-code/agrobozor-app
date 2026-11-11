@@ -36,10 +36,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    const isNetwork = err?.message === 'Failed to fetch' || err?.name === 'TypeError';
+    throw new Error(
+      isNetwork
+        ? "Server bilan aloqa uzildi yoki backend server faol emas (Failed to fetch). Tarmoqni yoki server holatini tekshiring."
+        : (err?.message || 'Serverga ulanishda xatolik yuz berdi')
+    );
+  }
 
   const data = await response.json().catch(() => ({}));
 
