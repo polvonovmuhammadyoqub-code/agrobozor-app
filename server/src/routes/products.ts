@@ -175,11 +175,51 @@ router.get('/mine/list', authenticateToken, requireRole(['FARMER']), async (req:
   try {
     const products = await prisma.product.findMany({
       where: { farmer_id: req.user!.id },
+      include: { _count: { select: { views: true, orders: true } } },
       orderBy: { created_at: 'desc' },
     });
     return res.json(products);
   } catch {
     return res.status(500).json({ error: 'Mahsulotlarni yuklashda xatolik' });
+  }
+});
+
+// Only the owner can inspect named viewers; documents and contact details are never included.
+router.get('/:id/analytics', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product || (product.farmer_id !== req.user!.id && req.user!.role !== 'ADMIN')) {
+      return res.status(404).json({ error: 'Mahsulot topilmadi' });
+    }
+    const [unique_views, viewers, sales, order_count, earnings] = await Promise.all([
+      prisma.productView.count({ where: { product_id: product.id } }),
+      prisma.productView.findMany({ where: { product_id: product.id }, orderBy: { last_viewed_at: 'desc' }, take: 50,
+        select: { id: true, last_viewed_at: true, viewer: { select: { id: true, full_name: true, region: true } } } }),
+      prisma.order.aggregate({ where: { product_id: product.id, status: 'COMPLETED' }, _sum: { quantity_kg: true, farmer_payout: true } }),
+      prisma.order.count({ where: { product_id: product.id } }),
+      prisma.transaction.aggregate({ where: { user_id: product.farmer_id, type: 'ESCROW_RELEASE_FARMER', order: { product_id: product.id } }, _sum: { amount: true } }),
+    ]);
+    res.json({ unique_views, viewers, order_count, sold_kg: sales._sum.quantity_kg || 0, earned: earnings._sum.amount || 0 });
+  } catch (err) {
+    console.error('Product analytics error:', err);
+    res.status(500).json({ error: 'Statistikani yuklashda xatolik' });
+  }
+});
+
+router.post('/:id/view', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id }, include: { farmer: { select: { kyc_status: true } } } });
+    if (!product || !product.is_active || product.farmer.kyc_status !== 'APPROVED') return res.status(404).json({ error: 'Mahsulot topilmadi' });
+    if (product.farmer_id !== req.user!.id) {
+      await prisma.productView.upsert({
+        where: { product_id_viewer_id: { product_id: product.id, viewer_id: req.user!.id } },
+        create: { product_id: product.id, viewer_id: req.user!.id },
+        update: { last_viewed_at: new Date() },
+      });
+    }
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: 'Ko‘rishni saqlashda xatolik' });
   }
 });
 
@@ -194,6 +234,7 @@ router.get('/:id', async (req: Request, res: Response) => {
           select: {
             id: true,
             full_name: true,
+            phone: true,
             farm_or_company_name: true,
             region: true,
             rating: true,
@@ -330,6 +371,9 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 
     const b = req.body || {};
     const data: any = {};
+    if (b.expected_quantity_kg !== undefined && toNumber(b.expected_quantity_kg) !== existing.available_quantity_kg) {
+      return res.status(409).json({ error: 'Mahsulot qoldig‘i o‘zgargan. Kabinetni yangilab, qayta urinib ko‘ring.' });
+    }
     if (b.title !== undefined) {
       const t = cleanText(b.title, 120);
       if (t.length < 2) return res.status(400).json({ error: 'Nom juda qisqa' });
@@ -371,7 +415,11 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     if (data.min_order_kg !== undefined && data.min_order_kg > (data.available_quantity_kg ?? existing.available_quantity_kg)) {
       return res.status(400).json({ error: "Minimal buyurtma qoldiqdan oshmasligi kerak" });
     }
-    const updated = await prisma.product.update({ where: { id: existing.id }, data });
+    const changed = await prisma.product.updateMany({
+      where: { id: existing.id, available_quantity_kg: existing.available_quantity_kg, price_per_kg: existing.price_per_kg }, data,
+    });
+    if(changed.count !== 1) return res.status(409).json({ error: 'Mahsulot o‘zgargan. Sahifani yangilab qayta urinib ko‘ring.' });
+    const updated = await prisma.product.findUnique({ where: { id: existing.id } });
     return res.json(updated);
   } catch {
     return res.status(500).json({ error: 'Mahsulotni tahrirlashda xatolik' });
@@ -386,8 +434,11 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
     if (existing.farmer_id !== req.user!.id && req.user!.role !== 'ADMIN') {
       return res.status(403).json({ error: "Ushbu mahsulotni o'chirishga ruxsat yo'q" });
     }
-    const hasOrders = await prisma.order.count({ where: { product_id: existing.id } });
-    if (hasOrders > 0) {
+    const [hasOrders, hasConversations] = await Promise.all([
+      prisma.order.count({ where: { product_id: existing.id } }),
+      prisma.conversation.count({ where: { product_id: existing.id } }),
+    ]);
+    if (hasOrders > 0 || hasConversations > 0) {
       await prisma.product.update({ where: { id: existing.id }, data: { is_active: false } });
       return res.json({ message: "Mahsulot buyurtmalarga bog'liq, shuning uchun sotuvdan olindi" });
     }

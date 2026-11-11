@@ -1,310 +1,310 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import {
+  Plus,
+  Eye,
+  Package,
+  Wallet,
+  BarChart3,
+  ShoppingBasket,
+  Trash2,
+  Pencil,
+  RefreshCw,
+  ArrowRight,
+} from 'lucide-react';
 import { Product, Order } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import {
-  Tractor,
-  PlusCircle,
-  Wallet,
-  ShieldCheck,
-  AlertTriangle,
-  Star,
-  Package,
-  Layers,
-  Sparkles,
-  CheckCircle2,
-  Trash2,
-  Edit,
-} from 'lucide-react';
 import { OrderCard } from '../components/OrderCard';
-
-interface FarmerDashboardProps {
+import { EditProductModal } from '../components/EditProductModal';
+import { ProductAnalyticsModal } from '../components/ProductAnalyticsModal';
+interface Props {
   onOpenAddProduct: () => void;
   onOpenWallet: () => void;
-  onOpenDispute: (order: Order) => void;
-  onOpenInvoice: (orderId: string) => void;
-  onOpenReview: (order: Order) => void;
+  onOpenDispute: (o: Order) => void;
+  onOpenInvoice: (id: string) => void;
+  onOpenReview: (o: Order) => void;
+  onMarket: () => void;
 }
-
-export const FarmerDashboard: React.FC<FarmerDashboardProps> = ({
-  onOpenAddProduct,
-  onOpenWallet,
-  onOpenDispute,
-  onOpenInvoice,
-  onOpenReview,
-}) => {
-  const { user, refreshUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'orders' | 'products'>('orders');
-  const [farmerOrders, setFarmerOrders] = useState<Order[]>([]);
-  const [farmerProducts, setFarmerProducts] = useState<Product[]>([]);
+export function FarmerDashboard(p: Props) {
+  const { user } = useAuth();
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [tab, setTab] = useState<'products' | 'orders'>('products');
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState('');
+  const [analytics, setAnalytics] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const fetchData = async () => {
-    if (!user) return;
+    setError('');
     setLoading(true);
     try {
-      const [ordersData, productsData] = await Promise.all([
-        api.orders.getAll(),
+      const [ps, os] = await Promise.all([
         api.products.getMine(),
+        api.orders.getAll(),
       ]);
-      setFarmerOrders(ordersData);
-      setFarmerProducts(productsData);
+      setProducts(ps);
+      setOrders(os);
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : 'Yuklashda xatolik');
     } finally {
       setLoading(false);
     }
   };
-
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [user?.id]);
-
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Ushbu mahsulotni o\'chirishni tasdiqlaysizmi?')) return;
+  const remove = async (id: string) => {
+    if (!confirm('Mahsulotni sotuvdan olib tashlaysizmi?')) return;
+    setDeleting(id);
     try {
       await api.products.delete(id);
-      fetchData();
-    } catch (err: any) {
-      alert(err.message || 'O\'chirishda xatolik');
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'O‘chirishda xatolik');
+    } finally {
+      setDeleting(null);
     }
   };
-
-  const isKycApproved = user?.kyc_status === 'APPROVED' || user?.role === 'ADMIN';
-
+  const totalViews = products.reduce(
+    (sum, p) => sum + (p._count?.views || 0),
+    0,
+  );
+  const mostViewed = [...products].sort(
+    (a, b) => (b._count?.views || 0) - (a._count?.views || 0),
+  )[0];
+  const pending = orders.filter((o) => o.status === 'PAID_IN_ESCROW').length;
   return (
     <div className="space-y-6">
-      {/* KYC Status Banner */}
-      {isKycApproved ? (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-3xl flex items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
-              <ShieldCheck className="w-6 h-6 text-agro-amber" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-emerald-950 flex items-center space-x-1.5">
-                <span>KYC Tasdiqlangan Fermer</span>
-                <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">
-                  APPROVED
-                </span>
-              </div>
-              <p className="text-[11px] text-emerald-800">
-                Sizning hisobingiz to'liq tekshiruvdan o'tgan. Mahsulotlaringiz bozorda kafolatlangan belgi bilan sotiladi.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onOpenAddProduct}
-            className="hidden sm:flex items-center space-x-1.5 bg-agro-green hover:bg-agro-lightGreen text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-sm transition-all"
-          >
-            <PlusCircle className="w-4 h-4 text-agro-amber" />
-            <span>Yangi Mahsulot Qo'shish</span>
-          </button>
+      <div className="flex justify-between gap-3 items-start">
+        <div>
+          <p className="text-xs font-bold text-emerald-700 uppercase tracking-widest">
+            Fermer kabineti
+          </p>
+          <h1 className="text-2xl sm:text-3xl font-black text-agro-dark mt-1">
+            Salom, {user?.full_name.split(' ')[0]}!
+          </h1>
+          <p className="text-sm text-gray-500 mt-2">
+            Hosilingiz, xaridorlaringiz va savdolaringiz.
+          </p>
         </div>
-      ) : (
-        <div className="p-4 bg-amber-50 border border-amber-300 rounded-3xl flex items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center flex-shrink-0">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-amber-950 flex items-center space-x-1.5">
-                <span>Fermerlik Hisobingiz Tekshirilmoqda</span>
-                <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded-full font-bold">
-                  KYC: PENDING
-                </span>
-              </div>
-              <p className="text-[11px] text-amber-800">
-                Admin tomonidan pasport/STIR ma'lumotlaringiz ko'rib chiqilmoqda. Tasdiqlangandan so'ng mahsulot sotish huquqiga ega bo'lasiz.
+        <button
+          onClick={fetchData}
+          aria-label="Kabinetni yangilash"
+          className="p-3 bg-white border rounded-xl"
+        >
+          <RefreshCw size={18} />
+        </button>
+      </div>
+      {user?.kyc_status !== 'APPROVED' && (
+        <p className="p-4 bg-amber-50 text-amber-900 border border-amber-200 rounded-2xl text-sm">
+          {user?.kyc_status === 'REJECTED'
+            ? 'Profilingiz tasdiqlanmadi. Administratorga murojaat qiling.'
+            : 'Profilingiz tekshirilmoqda. Mahsulot qo‘shishingiz mumkin; tasdiqlangandan so‘ng bozorda ko‘rinadi.'}
+        </p>
+      )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          [Package, 'Mahsulotlar', products.length],
+          [Eye, 'Ko‘rishlar', totalViews],
+          [ShoppingBasket, 'Yangi buyurtma', pending],
+          [
+            Wallet,
+            'Mavjud balans',
+            `${(user?.wallet_available || 0).toLocaleString()} so‘m`,
+          ],
+        ].map(([Icon, label, value]) => {
+          const I = Icon as typeof Eye;
+          return (
+            <div
+              key={String(label)}
+              className="bg-white rounded-2xl p-4 border border-gray-100"
+            >
+              <I size={20} className="text-emerald-700 mb-3" />
+              <p className="font-black text-xl text-agro-dark break-words">
+                {String(value)}
               </p>
+              <p className="text-xs text-gray-500 mt-1">{String(label)}</p>
             </div>
+          );
+        })}
+      </div>
+      <button
+        onClick={p.onOpenAddProduct}
+        className="w-full sm:w-auto py-4 px-6 rounded-2xl bg-agro-green text-white font-bold flex items-center justify-center gap-2"
+      >
+        <Plus size={20} />
+        Mahsulot qo‘shish
+      </button>
+      {mostViewed && (mostViewed._count?.views || 0) > 0 && (
+        <button
+          onClick={() => setAnalytics(mostViewed)}
+          className="w-full text-left bg-emerald-50 rounded-2xl p-4 border border-emerald-100 flex items-center gap-3"
+        >
+          <BarChart3 className="text-emerald-800 shrink-0" />
+          <div>
+            <p className="text-xs text-emerald-700">
+              Eng ko‘p qiziqish bildirilgan
+            </p>
+            <p className="font-bold text-agro-dark">
+              {mostViewed.title} · {mostViewed._count?.views} odam
+            </p>
           </div>
+          <ArrowRight size={19} className="ml-auto shrink-0 text-emerald-800" />
+        </button>
+      )}
+      <div className="flex gap-2 bg-white rounded-2xl p-1.5 border w-fit">
+        <button
+          onClick={() => setTab('products')}
+          className={`px-4 py-3 rounded-xl text-sm font-bold ${tab === 'products' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-500'}`}
+        >
+          Mening mahsulotlarim
+        </button>
+        <button
+          onClick={() => setTab('orders')}
+          className={`px-4 py-3 rounded-xl text-sm font-bold ${tab === 'orders' ? 'bg-emerald-50 text-emerald-800' : 'text-gray-500'}`}
+        >
+          Buyurtmalar {pending > 0 && `(${pending})`}
+        </button>
+      </div>
+      {error && (
+        <div
+          role="alert"
+          className="p-4 rounded-2xl bg-rose-50 text-rose-700 text-sm"
+        >
+          {error}
+          <button onClick={fetchData} className="underline ml-2">
+            Qayta urinish
+          </button>
         </div>
       )}
-
-      {/* Fermer KPI Kartalari */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Yechishga tayyor balans */}
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-2">
-          <div className="flex justify-between items-center text-xs text-gray-500 font-semibold">
-            <span>Yechishga tayyor mablag'</span>
-            <Wallet className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-xl font-black text-gray-900">
-            {(user?.wallet_available || 0).toLocaleString()} <span className="text-xs font-normal">so'm</span>
-          </div>
-          <button
-            onClick={onOpenWallet}
-            className="text-[11px] text-agro-green font-bold hover:underline"
-          >
-            Hisobdan yechish &rarr;
-          </button>
-        </div>
-
-        {/* Escrowda muzlatilgan */}
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-2">
-          <div className="flex justify-between items-center text-xs text-gray-500 font-semibold">
-            <span>Escrow Kafolat Balansi</span>
-            <ShieldCheck className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-xl font-black text-amber-600">
-            {(user?.wallet_escrow || 0).toLocaleString()} <span className="text-xs font-normal">so'm</span>
-          </div>
-          <p className="text-[11px] text-gray-400">
-            Xaridor mahsulotni qabul qilgach o'tadi
-          </p>
-        </div>
-
-        {/* Mahsulotlar soni */}
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-2">
-          <div className="flex justify-between items-center text-xs text-gray-500 font-semibold">
-            <span>Faol Mahsulotlar</span>
-            <Package className="w-4 h-4 text-indigo-500" />
-          </div>
-          <div className="text-xl font-black text-gray-900">
-            {farmerProducts.length} <span className="text-xs font-normal">ta lot</span>
-          </div>
-          <p className="text-[11px] text-gray-400">
-            Katalogda ommabop sotuvda
-          </p>
-        </div>
-
-        {/* Reyting va Premium */}
-        <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-2">
-          <div className="flex justify-between items-center text-xs text-gray-500 font-semibold">
-            <span>Fermer Reytingi</span>
-            <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
-          </div>
-          <div className="text-xl font-black text-gray-900 flex items-center space-x-1.5">
-            <span>{user?.rating?.toFixed(1) || '5.0'}</span>
-            {user?.is_premium && (
-              <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md font-bold">
-                PREMIUM
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onOpenWallet}
-            className="text-[11px] text-amber-700 font-bold hover:underline"
-          >
-            {user?.is_premium ? 'Oltin a\'zolik faol' : 'Oltin Premium sotib olish &rarr;'}
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs: Tushgan Buyurtmalar va Mening Mahsulotlarim */}
-      <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden p-6 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setActiveTab('orders')}
-              className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-                activeTab === 'orders'
-                  ? 'bg-agro-green text-white shadow-md shadow-emerald-900/15'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200/70'
-              }`}
-            >
-              Tushgan Buyurtmalar ({farmerOrders.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('products')}
-              className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-                activeTab === 'products'
-                  ? 'bg-agro-green text-white shadow-md shadow-emerald-900/15'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200/70'
-              }`}
-            >
-              Mening Mahsulotlarim ({farmerProducts.length})
-            </button>
-          </div>
-
-          <button
-            onClick={onOpenAddProduct}
-            className="flex items-center space-x-1.5 bg-agro-green hover:bg-agro-lightGreen text-white text-xs font-bold px-4 py-2 rounded-2xl shadow-sm transition-all"
-          >
-            <PlusCircle className="w-4 h-4 text-agro-amber" />
-            <span>Mahsulot Qo'shish</span>
-          </button>
-        </div>
-
-        {/* Tanlangan bo'lim kontenti */}
-        {loading ? (
-          <div className="py-12 text-center text-xs text-gray-400">Yuklanmoqda...</div>
-        ) : activeTab === 'orders' ? (
-          farmerOrders.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">
-              Hozircha yangi tushgan buyurtmalar yo'q
+      {loading ? (
+        <p role="status" className="py-12 text-center text-gray-500">
+          Kabinet yuklanmoqda…
+        </p>
+      ) : tab === 'products' ? (
+        <>
+          {!products.length ? (
+            <div className="bg-white rounded-3xl p-8 text-center border">
+              <Package className="mx-auto text-emerald-700 mb-4" size={36} />
+              <h2 className="font-bold">Birinchi mahsulotingizni joylang</h2>
+              <p className="text-sm text-gray-500 mt-2">
+                Rasm, narx va qoldiqni kiriting. Xaridorlar sizga shu ilovada
+                yozadi.
+              </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {farmerOrders.map((order) => (
-                <OrderCard
-                  key={order.id}
-                  order={order}
-                  onRefresh={fetchData}
-                  onOpenDispute={onOpenDispute}
-                  onOpenInvoice={onOpenInvoice}
-                  onOpenReview={onOpenReview}
-                />
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {products.map((product) => (
+                <article
+                  key={product.id}
+                  className="bg-white rounded-2xl border overflow-hidden"
+                >
+                  <div className="relative">
+                    <img
+                      src={product.image_url}
+                      alt={product.title}
+                      className="w-full aspect-[16/10] object-cover bg-gray-100"
+                    />
+                    <span
+                      className={`absolute top-3 left-3 text-xs rounded-full px-3 py-1 font-bold ${product.is_active ? 'bg-white text-emerald-800' : 'bg-gray-800 text-white'}`}
+                    >
+                      {!product.is_active
+                        ? 'Sotuvdan olingan'
+                        : user?.kyc_status !== 'APPROVED'
+                          ? 'Tekshiruvda'
+                          : 'Sotuvda'}
+                    </span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <h2 className="font-bold text-lg">{product.title}</h2>
+                    <p className="text-emerald-800 font-bold">
+                      {product.price_per_kg.toLocaleString()} so‘m / kg{' '}
+                      <span className="text-gray-400 font-normal text-xs">
+                        · {product.available_quantity_kg} kg qoldi
+                      </span>
+                    </p>
+                    <div className="flex gap-4 text-xs text-gray-500">
+                      <span className="flex gap-1 items-center">
+                        <Eye size={15} />
+                        {product._count?.views || 0} ko‘rgan
+                      </span>
+                      <span>{product._count?.orders || 0} buyurtma</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setAnalytics(product)}
+                        className="flex-1 bg-emerald-50 text-emerald-800 rounded-xl py-3 text-sm font-bold flex justify-center items-center gap-2"
+                      >
+                        <BarChart3 size={17} />
+                        Statistika
+                      </button>
+                      <button
+                        aria-label={`${product.title}ni tahrirlash`}
+                        onClick={() => setEditing(product)}
+                        className="p-3 rounded-xl border text-emerald-800"
+                      >
+                        <Pencil size={17} />
+                      </button>
+                      <button
+                        aria-label={`${product.title}ni o‘chirish`}
+                        disabled={deleting === product.id}
+                        onClick={() => remove(product.id)}
+                        className="p-3 rounded-xl border text-gray-400 disabled:opacity-40"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  </div>
+                </article>
               ))}
             </div>
-          )
-        ) : (
-          /* Mahsulotlar Jadvali */
-          farmerProducts.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-xs">
-              Siz hali hech qanday mahsulot joylashtirmadingiz. "Mahsulot Qo'shish" tugmasini bosing!
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-200 text-gray-500 uppercase text-[10px]">
-                    <th className="py-2.5">Rasm</th>
-                    <th className="py-2.5">Mahsulot nomi</th>
-                    <th className="py-2.5">Kategoriya</th>
-                    <th className="py-2.5">Narx (1 kg)</th>
-                    <th className="py-2.5">Omborda qoldiq</th>
-                    <th className="py-2.5">Hosil sanasi</th>
-                    <th className="py-2.5 text-right">Amallar</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-medium">
-                  {farmerProducts.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="py-2.5">
-                        <img
-                          src={p.image_url}
-                          alt={p.title}
-                          className="w-10 h-10 rounded-xl object-cover"
-                        />
-                      </td>
-                      <td className="py-2.5 font-bold text-gray-900">{p.title}</td>
-                      <td className="py-2.5 text-gray-600">{p.category}</td>
-                      <td className="py-2.5 font-bold text-agro-green">
-                        {p.price_per_kg.toLocaleString()} so'm
-                      </td>
-                      <td className="py-2.5">{p.available_quantity_kg} kg</td>
-                      <td className="py-2.5 text-gray-500">
-                        {new Date(p.harvest_date).toLocaleDateString('uz-UZ')}
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <button
-                          onClick={() => handleDeleteProduct(p.id)}
-                          className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-      </div>
+          )}
+        </>
+      ) : !orders.length ? (
+        <p className="bg-white p-8 rounded-2xl text-gray-500 text-sm text-center">
+          Buyurtmalar shu yerda paydo bo‘ladi.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              onRefresh={fetchData}
+              onOpenDispute={p.onOpenDispute}
+              onOpenInvoice={p.onOpenInvoice}
+              onOpenReview={p.onOpenReview}
+            />
+          ))}
+        </div>
+      )}
+      <button
+        onClick={p.onMarket}
+        className="w-full rounded-2xl border border-emerald-200 bg-white p-5 text-left flex items-center gap-3"
+      >
+        <ShoppingBasket className="text-emerald-700" />
+        <span>
+          <strong className="block text-agro-dark">Bozorga o‘tish</strong>
+          <span className="text-xs text-gray-500">
+            Mavjud meva va sabzavotlarni ko‘ring
+          </span>
+        </span>
+        <ArrowRight size={19} className="ml-auto" />
+      </button>
+      {editing && (
+        <EditProductModal
+          product={editing}
+          onClose={() => setEditing(null)}
+          onSaved={fetchData}
+        />
+      )}
+      {analytics && (
+        <ProductAnalyticsModal
+          product={analytics}
+          onClose={() => setAnalytics(null)}
+        />
+      )}
     </div>
   );
-};
+}

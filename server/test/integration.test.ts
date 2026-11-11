@@ -47,6 +47,7 @@ after(async () => {
   await prisma.dispute.deleteMany({ where: { buyer_id: { in: ids } } });
   await prisma.transaction.deleteMany({ where: { OR: [{ user_id: { in: ids } }, { order: orders }] } });
   await prisma.withdrawalRequest.deleteMany({ where: { user_id: { in: ids } } });
+  await prisma.conversation.deleteMany({ where: { OR: [{ buyer_id: { in: ids } }, { seller_id: { in: ids } }] } });
   await prisma.order.deleteMany({ where: orders });
   await prisma.product.deleteMany({ where: { farmer_id: { in: ids } } });
   await prisma.user.deleteMany({ where: { id: { in: ids } } });
@@ -262,4 +263,86 @@ test('Vercel catch-all preserves product filter query parameters', options, asyn
   } finally {
     await new Promise<void>(resolve => bridge.close(() => resolve()));
   }
+});
+
+test('product detail includes seller phone but excludes identity documents and private fields', options, async () => {
+  const result = await request(`/products/${product.id}`, undefined, undefined, 'GET');
+  assert.equal(result.status, 200);
+  assert.equal(result.data.farmer.phone, users.FARMER.phone);
+  for (const key of ['tin_or_passport', 'password_hash', 'email', 'wallet_available']) assert.equal(result.data.farmer[key], undefined);
+});
+
+test('views are unique per signed-in viewer, exclude owner and protect viewer analytics', options, async () => {
+  const p = await makeProduct();
+  assert.equal((await request(`/products/${p.id}/view`, undefined, {})).status, 401);
+  const results = await Promise.all(Array.from({ length: 3 }, () => request(`/products/${p.id}/view`, 'BUYER_B2C', {})));
+  for (const result of results) assert.equal(result.status, 200);
+  await request(`/products/${p.id}/view`, 'FARMER', {});
+  const stats = await request(`/products/${p.id}/analytics`, 'FARMER', undefined, 'GET');
+  assert.equal(stats.status, 200); assert.equal(stats.data.unique_views, 1);
+  assert.equal(stats.data.viewers[0].viewer.full_name, users.BUYER_B2C.full_name);
+  for (const key of ['tin_or_passport', 'phone', 'email', 'password_hash']) assert.equal(stats.data.viewers[0].viewer[key], undefined);
+  assert.equal((await request(`/products/${p.id}/analytics`, 'BUYER_B2C', undefined, 'GET')).status, 404);
+  const mine = await request('/products/mine/list', 'FARMER', undefined, 'GET');
+  assert.equal(mine.data.find((item: any) => item.id === p.id)._count.views, 1);
+});
+
+test('seller conversations are private, persistent, replyable and mark messages read', options, async () => {
+  const p = await makeProduct();
+  assert.equal((await request('/messages/conversations', undefined, { product_id: p.id })).status, 401);
+  assert.equal((await request('/messages/conversations', 'FARMER', { product_id: p.id })).status, 400);
+  const opened = await Promise.all([request('/messages/conversations', 'BUYER_B2C', { product_id: p.id }), request('/messages/conversations', 'BUYER_B2C', { product_id: p.id })]);
+  assert.ok(opened.every(r => [200,201].includes(r.status)));
+  assert.equal(opened[0].data.id, opened[1].data.id);
+  const id = opened[0].data.id; const path = `/messages/conversations/${id}/messages`;
+  assert.equal((await request(path, 'COURIER', undefined, 'GET')).status, 404);
+  assert.equal((await request(path, 'COURIER', { body: 'Unauthorized' })).status, 404);
+  assert.equal((await request('/messages/conversations', 'COURIER', undefined, 'GET')).data.length, 0);
+  assert.equal((await request(path, 'BUYER_B2C', { body: '   ' })).status, 400);
+  assert.equal((await request(path, 'BUYER_B2C', { body: 'a'.repeat(2001) })).status, 400);
+  const client_id = randomUUID();
+  const sent = await request(path, 'BUYER_B2C', { body: 'Assalomu alaykum, olma bormi?', client_id });
+  assert.equal(sent.status, 201);
+  const resent = await request(path, 'BUYER_B2C', { body: 'Assalomu alaykum, olma bormi?', client_id });
+  assert.equal(resent.data.id, sent.data.id);
+  const list = await request('/messages/conversations', 'FARMER', undefined, 'GET');
+  const chat = list.data.find((c: any) => c.id === id);
+  assert.equal(chat._count.messages, 1);
+  assert.equal((await request('/messages/unread-count', 'FARMER', undefined, 'GET')).data.count, 1);
+  assert.equal((await request('/messages/unread-count', 'COURIER', undefined, 'GET')).data.count, 0);
+  assert.equal(chat.buyer.tin_or_passport, undefined); assert.equal(chat.seller.password_hash, undefined);
+  const history = await request(path, 'FARMER', undefined, 'GET');
+  assert.equal(history.data.messages[0].body, 'Assalomu alaykum, olma bormi?');
+  assert.ok(history.data.messages[0].read_at);
+  assert.equal((await request('/messages/unread-count', 'FARMER', undefined, 'GET')).data.count, 0);
+  assert.equal((await request(path, 'FARMER', { body: 'Va alaykum assalom, albatta bor.' })).status, 201);
+  assert.equal((await request(path, 'BUYER_B2C', undefined, 'GET')).data.messages.length, 2);
+  await request(`/products/${p.id}`, 'FARMER', undefined, 'DELETE');
+  assert.equal((await prisma.product.findUnique({ where: { id: p.id } })).is_active, false);
+  assert.equal((await request(path, 'BUYER_B2C', undefined, 'GET')).data.messages.length, 2);
+});
+
+test('message history paginates without loss and rejects foreign cursors', options, async () => {
+  const p = await makeProduct();
+  const opened = await request('/messages/conversations', 'BUYER_B2B', { product_id: p.id });
+  const id = opened.data.id; const path = `/messages/conversations/${id}/messages`;
+  await prisma.message.createMany({ data: Array.from({ length: 65 }, (_,i) => ({ client_id: randomUUID(), conversation_id: id, sender_id: users.BUYER_B2B.id, body: `Xabar ${i}`, created_at: new Date(Date.now() + i) })) });
+  const latest = await request(path, 'FARMER', undefined, 'GET');
+  assert.equal(latest.data.messages.length, 50); assert.ok(latest.data.next_cursor);
+  const older = await request(`${path}?before=${latest.data.next_cursor}`, 'FARMER', undefined, 'GET');
+  assert.equal(older.data.messages.length, 15); assert.equal(older.data.next_cursor, null);
+  assert.equal(new Set([...older.data.messages, ...latest.data.messages].map((m:any) => m.id)).size, 65);
+  assert.equal((await request(`${path}?before=${randomUUID()}`, 'FARMER', undefined, 'GET')).status, 400);
+});
+
+test('farmer stock edits detect stale quantities and analytics uses actual payout ledger', options, async () => {
+  const p = await makeProduct(10);
+  const order = (await createOrder(p, 1)).data;
+  const stale = await request(`/products/${p.id}`, 'FARMER', { available_quantity_kg: 20, expected_quantity_kg: 10 }, 'PUT');
+  assert.equal(stale.status, 409);
+  assert.equal((await prisma.product.findUnique({ where: { id:p.id } })).available_quantity_kg, 9);
+  assert.equal((await request(`/products/${p.id}`, 'FARMER', { available_quantity_kg: 20, expected_quantity_kg: 9 }, 'PUT')).status, 200);
+  await prisma.transaction.create({ data: { order_id:order.id, user_id:users.FARMER.id, type:'ESCROW_RELEASE_FARMER', amount:4500 } });
+  const stats = await request(`/products/${p.id}/analytics`, 'FARMER', undefined, 'GET');
+  assert.equal(stats.data.earned, 4500);
 });

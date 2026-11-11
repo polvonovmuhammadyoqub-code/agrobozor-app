@@ -16,14 +16,18 @@ import {
 
 interface MarketplaceProps {
   onOrderClick: (product: Product) => void;
+  onViewProduct: (product: Product) => void;
   onOpenAddProduct?: () => void;
   searchQuery: string;
+  onSearchChange: (value: string) => void;
 }
 
 export const Marketplace: React.FC<MarketplaceProps> = ({
   onOrderClick,
+  onViewProduct,
   onOpenAddProduct,
   searchQuery,
+  onSearchChange,
 }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,13 +57,18 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
         const data = await api.products.getAll(params);
         if (active) setProducts(data);
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : 'Mahsulotlarni yuklashda xatolik');
+        if (active)
+          setError(
+            e instanceof Error ? e.message : 'Mahsulotlarni yuklashda xatolik',
+          );
       } finally {
         if (active) setLoading(false);
       }
     };
     void fetchProducts();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [category, region, todayOnly, minPrice, maxPrice, searchQuery, retry]);
 
   const categories = [
@@ -67,7 +76,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     { id: 'MEVALAR', label: '🍎 Mevalar' },
     { id: 'SABZAVOTLAR', label: '🥦 Sabzavotlar' },
     { id: 'POLIZ', label: '🍉 Poliz' },
-    { id: 'SUT_GOSHT', label: '🥩 Sut va Go\'sht' },
+    { id: 'SUT_GOSHT', label: "🥩 Sut va Go'sht" },
     { id: 'DON', label: '🌾 Don' },
   ];
 
@@ -77,68 +86,38 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
     'Samarqand',
     'Surxondaryo',
     'Qashqadaryo',
-    'Farg\'ona',
+    "Farg'ona",
     'Xorazm',
     'Jizzax',
     'Buxoro',
     'Andijon',
     'Namangan',
+    'Navoiy',
+    'Sirdaryo',
+    'Qoraqalpog‘iston',
   ];
 
   return (
     <div className="space-y-6">
-      {/* Hero Banner */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-agro-dark via-agro-green to-emerald-900 text-white p-6 sm:p-10 shadow-xl">
-        <div className="relative z-10 max-w-2xl space-y-3">
-          <div className="inline-flex items-center space-x-2 bg-agro-amber text-black px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Kafolatlangan Agro-Savdo</span>
-          </div>
-
-          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-            Hosilni to'g'ridan-to'g'ri O'zbekiston bog'bonlaridan xarid qiling
-          </h1>
-
-          <p className="text-emerald-100 text-xs sm:text-sm leading-relaxed">
-            O'rtakashlarsiz, adolatli narxlarda, yangi uzilgan meva-sabzavotlar. Barcha to'lovlar <strong>Escrow kafolat tizimi</strong> bilan to'liq himoyalangan.
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-emerald-700 font-bold">
+            Daladan to‘g‘ridan-to‘g‘ri
           </p>
-
-          {onOpenAddProduct && (
-            <div className="pt-1">
-              <button
-                onClick={onOpenAddProduct}
-                className="inline-flex items-center space-x-2 bg-agro-amber hover:bg-yellow-400 text-agro-dark font-extrabold px-5 py-2.5 rounded-2xl text-xs sm:text-sm shadow-lg transition-all active:scale-95"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>O'z hosilingizni sotuvga chiqaring (E'lon berish)</span>
-              </button>
-            </div>
-          )}
-
-          {/* Afzalliklar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
-            <div className="flex items-center space-x-2 bg-white/10 backdrop-blur rounded-2xl p-2.5 text-xs">
-              <ShieldCheck className="w-5 h-5 text-agro-amber flex-shrink-0" />
-              <span><strong>100% Escrow:</strong> Qabul qilmaguncha pul o'tmaydi</span>
-            </div>
-            <div className="flex items-center space-x-2 bg-white/10 backdrop-blur rounded-2xl p-2.5 text-xs">
-              <Truck className="w-5 h-5 text-agro-amber flex-shrink-0" />
-              <span><strong>Tezkor Kuryer:</strong> Daladan to'g'ri eshikkacha</span>
-            </div>
-            <div className="flex items-center space-x-2 bg-white/10 backdrop-blur rounded-2xl p-2.5 text-xs">
-              <CheckCircle className="w-5 h-5 text-agro-amber flex-shrink-0" />
-              <span><strong>B2B Shartnoma:</strong> Rasmiy hisob-faktura (Invoice)</span>
-            </div>
-          </div>
+          <h1 className="text-3xl font-black text-agro-dark mt-1">Bozor</h1>
+          <p className="text-sm text-gray-500 mt-2">
+            Yangi meva va sabzavotlarni toping, sotuvchi bilan kelishing.
+          </p>
         </div>
-
-        {/* Orqa fon bezagi */}
-        <div className="absolute right-0 bottom-0 top-0 w-1/3 opacity-20 pointer-events-none hidden md:block">
-          <svg viewBox="0 0 200 200" className="w-full h-full text-white fill-current">
-            <path d="M40,-60C50,-50,55,-35,60,-20C65,-5,70,10,65,25C60,40,45,55,30,65C15,75,-0,80,-15,75C-30,70,-45,60,-55,45C-65,30,-70,15,-68,-0C-66,-15,-57,-30,-46,-41C-35,-52,-20,-60,-2,-58C16,-56,32,-70,40,-60Z" transform="translate(100 100)" />
-          </svg>
-        </div>
-      </div>
+        <input
+          aria-label="Mahsulot qidirish"
+          type="search"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Olma, pomidor, uzum…"
+          className="w-full bg-white rounded-2xl border border-gray-200 p-4 text-base focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+        />
+      </section>
 
       {/* Filtrlar paneli */}
       <div className="bg-white p-4 sm:p-5 rounded-3xl border border-gray-200/80 shadow-sm space-y-4">
@@ -171,11 +150,13 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 className="bg-transparent font-semibold text-gray-800 focus:outline-none"
               >
                 <option value="ALL">Barcha viloyatlar</option>
-                {regions.filter((r) => r !== 'ALL').map((r) => (
-                  <option key={r} value={r}>
-                    {r} viloyati
-                  </option>
-                ))}
+                {regions
+                  .filter((r) => r !== 'ALL')
+                  .map((r) => (
+                    <option key={r} value={r}>
+                      {r} viloyati
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -222,26 +203,39 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
             Mavjud Agro Mahsulotlar ({products.length})
           </h2>
           <span className="text-xs text-gray-500">
-            Real vaqtda ombor qoldig'i yangilanadi
+            Sotuvchiga to‘g‘ridan-to‘g‘ri yozing
           </span>
         </div>
 
         {loading ? (
           <div className="py-20 text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-agro-green border-t-transparent" />
-            <p className="mt-2 text-xs text-gray-500 font-medium">Mahsulotlar yuklanmoqda...</p>
+            <p className="mt-2 text-xs text-gray-500 font-medium">
+              Mahsulotlar yuklanmoqda...
+            </p>
           </div>
         ) : error ? (
-          <div role="alert" className="p-6 text-center bg-rose-50 text-rose-700 rounded-2xl">
+          <div
+            role="alert"
+            className="p-6 text-center bg-rose-50 text-rose-700 rounded-2xl"
+          >
             <p>{error}</p>
-            <button onClick={() => setRetry((n) => n + 1)} className="mt-3 font-bold underline">Qayta urinish</button>
+            <button
+              onClick={() => setRetry((n) => n + 1)}
+              className="mt-3 font-bold underline"
+            >
+              Qayta urinish
+            </button>
           </div>
         ) : products.length === 0 ? (
           <div className="py-16 text-center bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
             <Layers className="w-12 h-12 text-agro-green/40 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-gray-800">Bozorda hozircha yangi mahsulotlar kutilmoqda</h3>
+            <h3 className="text-base font-bold text-gray-800">
+              Bozorda hozircha yangi mahsulotlar kutilmoqda
+            </h3>
             <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto mb-5">
-              Siz birinchi bo'lib o'z hosilingiz yoki mahsulotingizni AgroBozor platformasiga joylashtirishingiz mumkin!
+              Siz birinchi bo'lib o'z hosilingiz yoki mahsulotingizni AgroBozor
+              platformasiga joylashtirishingiz mumkin!
             </p>
             {onOpenAddProduct && (
               <button
@@ -260,6 +254,7 @@ export const Marketplace: React.FC<MarketplaceProps> = ({
                 key={product.id}
                 product={product}
                 onOrderClick={onOrderClick}
+                onViewProduct={onViewProduct}
               />
             ))}
           </div>

@@ -27,6 +27,10 @@ model User {
   created_at          DateTime @default(now())
 
   // Relations
+  product_views       ProductView[]
+  conversations_started Conversation[] @relation("ConversationBuyer")
+  conversations_received Conversation[] @relation("ConversationSeller")
+  messages_sent       Message[]
   products            Product[]      @relation("FarmerProducts")
   buyer_orders        Order[]        @relation("BuyerOrders")
   farmer_orders       Order[]        @relation("FarmerOrders")
@@ -57,6 +61,8 @@ model Product {
   // Relations
   farmer                User     @relation("FarmerProducts", fields: [farmer_id], references: [id], onDelete: Cascade)
   orders                Order[]
+  views                 ProductView[]
+  conversations         Conversation[]
 }
 
 model Order {
@@ -161,4 +167,48 @@ model WithdrawalRequest {
 
   // Relations
   user           User      @relation(fields: [user_id], references: [id])
+}
+
+model ProductView {
+  id             String   @id @default(uuid())
+  product_id     String
+  viewer_id      String
+  first_viewed_at DateTime @default(now())
+  last_viewed_at  DateTime @default(now())
+  product        Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  viewer         User     @relation(fields: [viewer_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, viewer_id])
+  @@index([product_id, last_viewed_at])
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  product_id String
+  buyer_id   String
+  seller_id  String
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  product    Product  @relation(fields: [product_id], references: [id])
+  buyer      User     @relation("ConversationBuyer", fields: [buyer_id], references: [id])
+  seller     User     @relation("ConversationSeller", fields: [seller_id], references: [id])
+  messages   Message[]
+
+  @@unique([product_id, buyer_id, seller_id])
+  @@index([buyer_id, updated_at])
+  @@index([seller_id, updated_at])
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  client_id       String   @unique
+  conversation_id String
+  sender_id       String
+  body            String
+  created_at      DateTime @default(now())
+  read_at         DateTime?
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender          User     @relation(fields: [sender_id], references: [id])
+
+  @@index([conversation_id, created_at, id])
 }

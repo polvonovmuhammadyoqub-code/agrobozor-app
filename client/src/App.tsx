@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { Navbar } from './components/Navbar';
@@ -19,17 +19,40 @@ import { CartCheckoutModal } from './components/CartCheckoutModal';
 import { LoginModal } from './components/LoginModal';
 import { RegisterModal } from './components/RegisterModal';
 import { Product, Order } from './types';
-import { ShieldCheck, Sprout, LogIn, UserPlus } from 'lucide-react';
+import { WelcomePage } from './components/WelcomePage';
+import { ProductDetails } from './components/ProductDetails';
+import { MessagesPage } from './pages/MessagesPage';
+import { api } from './lib/api';
+import { ShieldCheck, LogIn, UserPlus } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const refreshData = () => setDataVersion((n) => n + 1);
-  const [currentTab, setCurrentTab] = useState<string>('marketplace');
+  const [currentTab, setCurrentTab] = useState<string>(() =>
+    !user
+      ? 'welcome'
+      : user.role === 'FARMER'
+        ? 'farmer'
+        : user.role === 'COURIER'
+          ? 'courier'
+          : user.role === 'ADMIN'
+            ? 'admin'
+            : 'marketplace',
+  );
+  const [detailsId, setDetailsId] = useState<string | null>(() =>
+    sessionStorage.getItem('agro_pending_product'),
+  );
+  const [chatId, setChatId] = useState<string | null>(null);
+  useEffect(() => {
+    if (user) sessionStorage.removeItem('agro_pending_product');
+  }, [user?.id]);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modal holatlari
-  const [orderModalProduct, setOrderModalProduct] = useState<Product | null>(null);
+  const [orderModalProduct, setOrderModalProduct] = useState<Product | null>(
+    null,
+  );
   const [disputeOrder, setDisputeOrder] = useState<Order | null>(null);
   const [invoiceOrderId, setInvoiceOrderId] = useState<string | null>(null);
   const [reviewOrder, setReviewOrder] = useState<Order | null>(null);
@@ -48,50 +71,71 @@ const AppContent: React.FC = () => {
     setCurrentTab('orders');
   };
 
-  // Himoyalangan tabga kirmoqchi bo'lganda
-  const handleProtectedTab = (tab: string) => {
-    if (!user) {
-      setIsLoginOpen(true);
-      return;
-    }
-    setCurrentTab(tab);
+  const openConversation = async (productId: string) => {
+    const conversation = await api.messages.open(productId);
+    setChatId(conversation.id);
+    setDetailsId(null);
+    setCurrentTab('messages');
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50/60 text-gray-900">
-      <Navbar
-        currentTab={currentTab}
-        setCurrentTab={(tab) => {
-          // Himoyalangan tablar
-          if (!user && tab !== 'marketplace') {
-            setIsLoginOpen(true);
-            return;
-          }
-          setCurrentTab(tab);
-        }}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        openWalletModal={() => setIsWalletOpen(true)}
-        openCartDrawer={() => setIsCartOpen(true)}
-        onOpenLogin={() => setIsLoginOpen(true)}
-        onOpenRegister={() => setIsRegisterOpen(true)}
-        onOpenAddProduct={() => {
-          if (!user) {
-            setIsLoginOpen(true);
-            return;
-          }
-          if (user.role !== 'FARMER') {
-            alert("Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.");
-            return;
-          }
-          setIsAddProductOpen(true);
-        }}
-      />
+      {currentTab !== 'welcome' && (
+        <Navbar
+          currentTab={currentTab}
+          setCurrentTab={(tab) => {
+            // Himoyalangan tablar
+            if (!user && !['marketplace', 'welcome'].includes(tab)) {
+              setIsLoginOpen(true);
+              return;
+            }
+            setCurrentTab(tab);
+          }}
+          openWalletModal={() => setIsWalletOpen(true)}
+          openCartDrawer={() => setIsCartOpen(true)}
+          onOpenLogin={() => setIsLoginOpen(true)}
+          onOpenRegister={() => setIsRegisterOpen(true)}
+          onOpenAddProduct={() => {
+            if (!user) {
+              setIsLoginOpen(true);
+              return;
+            }
+            if (user.role !== 'FARMER') {
+              alert(
+                "Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.",
+              );
+              return;
+            }
+            setIsAddProductOpen(true);
+          }}
+        />
+      )}
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main
+        className={
+          currentTab === 'welcome'
+            ? 'flex-1'
+            : 'flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-28 md:pb-8'
+        }
+      >
+        {currentTab === 'welcome' && (
+          <WelcomePage
+            onLogin={() => setIsLoginOpen(true)}
+            onRegister={() => setIsRegisterOpen(true)}
+            onMarket={() => setCurrentTab('marketplace')}
+          />
+        )}
+        {currentTab === 'messages' && user && (
+          <MessagesPage
+            initialConversationId={chatId}
+            onProduct={setDetailsId}
+          />
+        )}
         {currentTab === 'marketplace' && (
           <Marketplace
             key={`marketplace-${dataVersion}`}
+            onViewProduct={(product) => setDetailsId(product.id)}
+            onSearchChange={setSearchQuery}
             onOrderClick={(product) => {
               if (!user) {
                 setIsLoginOpen(true);
@@ -105,7 +149,9 @@ const AppContent: React.FC = () => {
                 return;
               }
               if (user.role !== 'FARMER') {
-                alert("Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.");
+                alert(
+                  "Mahsulot sotish uchun 'Fermer' roli bilan ro'yxatdan o'ting.",
+                );
                 return;
               }
               setIsAddProductOpen(true);
@@ -127,6 +173,7 @@ const AppContent: React.FC = () => {
           <FarmerDashboard
             key={`farmer-${dataVersion}`}
             onOpenAddProduct={() => setIsAddProductOpen(true)}
+            onMarket={() => setCurrentTab('marketplace')}
             onOpenWallet={() => setIsWalletOpen(true)}
             onOpenDispute={(order) => setDisputeOrder(order)}
             onOpenInvoice={(orderId) => setInvoiceOrderId(orderId)}
@@ -143,7 +190,7 @@ const AppContent: React.FC = () => {
         {currentTab === 'admin' && user?.role === 'ADMIN' && <AdminPanel />}
 
         {/* Mehmon holati: himoyalangan tab uchun chaqiruv ekrani */}
-        {!user && currentTab !== 'marketplace' && (
+        {!user && currentTab !== 'marketplace' && currentTab !== 'welcome' && (
           <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
             <div className="w-20 h-20 rounded-2xl bg-agro-paleGreen flex items-center justify-center mb-6">
               <ShieldCheck className="w-10 h-10 text-agro-green" />
@@ -152,7 +199,8 @@ const AppContent: React.FC = () => {
               Kirish talab etiladi
             </h2>
             <p className="text-gray-500 mb-6 max-w-sm">
-              Bu sahifani ko'rish uchun tizimga kirishingiz yoki yangi akkaunt yaratishingiz kerak.
+              Bu sahifani ko'rish uchun tizimga kirishingiz yoki yangi akkaunt
+              yaratishingiz kerak.
             </p>
             <div className="flex items-center space-x-3">
               <button
@@ -239,6 +287,24 @@ const AppContent: React.FC = () => {
         onSuccess={handleOrderSuccess}
       />
 
+      {detailsId && (
+        <ProductDetails
+          key={detailsId}
+          id={detailsId}
+          onClose={() => setDetailsId(null)}
+          onBuy={(product) => {
+            setDetailsId(null);
+            setOrderModalProduct(product);
+          }}
+          onMessage={openConversation}
+          onLogin={() => {
+            sessionStorage.setItem('agro_pending_product', detailsId);
+            setDetailsId(null);
+            setIsLoginOpen(true);
+          }}
+        />
+      )}
+
       {/* Auth Modallar */}
       <LoginModal
         isOpen={isLoginOpen}
@@ -264,48 +330,40 @@ const AppContent: React.FC = () => {
         }}
       />
 
-      {/* Footer */}
-      <footer className="bg-agro-dark text-white border-t border-emerald-950 mt-12 py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-gray-400">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-xl bg-agro-green flex items-center justify-center text-white">
-              <Sprout className="w-5 h-5 text-agro-amber" />
-            </div>
-            <div>
-              <div className="font-extrabold text-white text-sm">
-                Agro<span className="text-agro-amber">Bozor</span>
-              </div>
-              <div className="text-[11px] text-gray-400">
-                O'zbekistonning Ishonchli va Xavfsiz Agro-Savdo Tizimi
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-6 text-[11px]">
-            <span className="flex items-center space-x-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>100% Escrow Kafolati</span>
-            </span>
-            <span>Toshkent, O'zbekiston</span>
-            <span>Tel: +998 (71) 200-00-00</span>
-          </div>
-
-          <div className="text-[11px] text-gray-500">
-            &copy; {new Date().getFullYear()} AgroBozor. Barcha huquqlar himoyalangan.
-          </div>
-        </div>
-      </footer>
+      {currentTab !== 'welcome' && (
+        <footer className="hidden md:block text-center text-xs text-gray-400 p-6">
+          © {new Date().getFullYear()} AgroBozor · Fermer, xaridor va logist bir
+          joyda
+        </footer>
+      )}
     </div>
   );
 };
 
 const SessionContent: React.FC = () => {
-  const { user } = useAuth();
-  return <CartProvider key={user?.id || 'guest'}><AppContent /></CartProvider>;
+  const { user, loading } = useAuth();
+  if (loading)
+    return (
+      <div
+        role="status"
+        className="min-h-screen flex items-center justify-center text-emerald-800 bg-[#f6f8f2]"
+      >
+        AgroBozor yuklanmoqda…
+      </div>
+    );
+  return (
+    <CartProvider key={user?.id || 'guest'}>
+      <AppContent />
+    </CartProvider>
+  );
 };
 
 export function App() {
-  return <AuthProvider><SessionContent /></AuthProvider>;
+  return (
+    <AuthProvider>
+      <SessionContent />
+    </AuthProvider>
+  );
 }
 
 export default App;

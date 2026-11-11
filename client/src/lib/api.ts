@@ -9,6 +9,7 @@ import {
   InvoiceData,
   Transaction,
   WithdrawalRequest,
+  ProductAnalytics, Conversation, ChatMessage, MessagePage,
 } from '../types';
 
 const envApiUrl = (import.meta as any).env?.VITE_API_URL || '';
@@ -97,13 +98,15 @@ export const api = {
       return request<Product[]>(`/products?${query.toString()}`);
     },
     getById: (id: string) => request<Product>(`/products/${id}`),
+    trackView: (id: string) => request<{ success: boolean }>(`/products/${id}/view`, { method: 'POST' }),
+    analytics: (id: string) => request<ProductAnalytics>(`/products/${id}/analytics`),
     getMine: () => request<Product[]>('/products/mine/list'),
     create: (body: Partial<Product>) =>
       request<Product>('/products', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
-    update: (id: string, body: Partial<Product>) =>
+    update: (id: string, body: Partial<Product> & { expected_quantity_kg?: number }) =>
       request<Product>(`/products/${id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -165,6 +168,14 @@ export const api = {
         method: 'POST',
       }),
     getInvoice: (id: string) => request<InvoiceData>(`/orders/${id}/invoice`),
+  },
+
+  messages: {
+    unread: () => request<{ count: number }>('/messages/unread-count'),
+    list: () => request<Conversation[]>('/messages/conversations'),
+    open: (product_id: string) => request<Conversation>('/messages/conversations', { method: 'POST', body: JSON.stringify({ product_id }) }),
+    history: (id: string, before?: string) => request<MessagePage>(`/messages/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+    send: (id: string, body: string, client_id: string) => request<ChatMessage>(`/messages/conversations/${id}/messages`, { method: 'POST', body: JSON.stringify({ body, client_id }) }),
   },
 
   // Disputes

@@ -49,6 +49,8 @@ export interface Product {
   region: string;
   is_active: boolean;
   created_at: string;
+  _count?: { views: number; orders: number };
+  reviews?: Review[];
   farmer?: {
     id: string;
     full_name: string;
@@ -235,4 +237,37 @@ export interface InvoiceData {
   grand_total: number;
   delivery_schedule: string;
   stamp: string;
+}
+
+export interface ProductAnalytics {
+  unique_views: number;
+  order_count: number;
+  sold_kg: number;
+  earned: number;
+  viewers: Array<{ id: string; last_viewed_at: string; viewer: { id: string; full_name: string; region: string } }>;
+}
+export interface ChatMessage {
+  id: string;
+  client_id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+export interface Conversation {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  updated_at: string;
+  product: { id: string; title: string; image_url: string; is_active: boolean };
+  buyer: { id: string; full_name: string; region: string; role: Role };
+  seller: { id: string; full_name: string; region: string; role: Role };
+  messages?: ChatMessage[];
+  _count?: { messages: number };
+}
+export interface MessagePage {
+  conversation: Conversation;
+  messages: ChatMessage[];
+  next_cursor: string | null;
 }

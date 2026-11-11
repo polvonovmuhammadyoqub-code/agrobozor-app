@@ -55,5 +55,5 @@ Vercel’da doimiy scheduler ishlamaydi: muddatli vazifalar hozir buyurtmalar
 ro‘yxati ochilganda ham bajariladi; qat’iy jadval uchun alohida cron kerak.
 Vercel deployi bajarilmadi. Barcha ehtimoliy xatolar yo‘qligi kafolatlanmaydi.
 
-GitHub write autentifikatsiyasi mavjud emasligi sababli remote repositoryga
-push qilinmadi; o‘zgarishlar ushbu muhitdagi lokal nusxada.
+Kod `fix/repository-audit` branchida saqlanadi. Mobil kabinetlar, mahsulot
+statistikasi va shaxsiy yozishmalar bo‘yicha ko‘rsatmalar README’da.

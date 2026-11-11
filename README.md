@@ -114,3 +114,38 @@ Lokal serverdagi scheduler har daqiqada ishlaydi. Vercel serverless muhitida
 doimiy interval ishlamaydi; muddatli tozalash va avtomatik yakunlash hozir
 `GET /api/orders` chaqirilganda bajariladi. Aniq vaqt talab qilinsa, alohida
 himoyalangan rejalashtirilgan vazifa/cron qo‘shish kerak.
+
+## Mobil kabinetlar, statistika va yozishmalar
+
+Mehmon avval “Kirish” va “Ro‘yxatdan o‘tish” ekranini ko‘radi. Bozorni hisob
+kiritmasdan ham ko‘rib chiqish mumkin. Kirgandan so‘ng fermerning mahsulotlari,
+logistning tayyor buyurtmalari, xaridorning esa bozori ochiladi. Mobil pastki
+menyudan kabinet, bozor, xabarlar va hamyonga o‘tish mumkin.
+
+Fermer mahsulot nomi, narxi, qoldig‘i va sotuv holatini kabinetda tahrirlaydi.
+Eskirgan qoldiq bilan saqlash urinishida server yangilashni talab qiladi.
+
+Mahsulot rasmi yoki nomiga bosilganda mahsulot oynasi ochiladi. Sotuvchining
+ismi, xo‘jaligi, hududi va telefon raqami ko‘rsatiladi; pasport/STIR, email,
+parol va balans bu ommaviy javobga kiritilmaydi. “Sotuvchiga yozish” orqali
+hisobga kirgan foydalanuvchi fermer bilan mahsulot bo‘yicha suhbat boshlaydi.
+
+Yozishmalar bazada saqlanadi, faqat ikki ishtirokchi uchun ochiq. Xabar yuborish
+limiti, o‘qilgan belgilari, eski xabarlarni sahifalash va takroriy yuborishdan
+himoya mavjud. Faol suhbat har 5 soniyada, ro‘yxat 10 soniyada va menyudagi yangi
+xabarlar belgisi 15 soniyada yangilanadi. Bu versiyada push bildirishnomalari yo‘q.
+
+Statistika mahsulot oynasini ochgan **hisobga kirgan noyob odamlar**ni sanaydi;
+o‘z mahsulotini ko‘rgan fermer sanalmaydi. Faqat mahsulot egasi yoki admin
+ko‘ruvchilar ismi/hududi, buyurtmalar, sotilgan kg va yakunlangan savdodan
+fermer daromadini ko‘radi. Mehmonlar sanalmaydi; avvalgi ko‘rishlar tiklanmaydi.
+
+**Mavjud serverni yangilash:** yangi `ProductView`, `Conversation`, `Message`
+jadvallari kerak. `server/prisma/mobile-experience.sql` ni bir marta qo‘llang
+(yoki moslashtirilgan muhitda `npm run db:push`), so‘ng build/deploy qiling.
+SQL yangi jadvallar va indekslarni qo‘shadi, mavjud yozuvlarni o‘chirmaydi.
+Eski sharhlar unikal indeksi uchun yuqoridagi alohida ko‘rsatma ham amal qiladi.
+
+To‘liq testlar uchun `TEST_DATABASE_URL` bilan server va brauzer testlarini
+ishga tushiring. Haqiqiy chat testi ikki mobil sessiyada xaridor xabari, fermer
+javobi, o‘qish huquqlari va fermerning ko‘ruvchilar statistikasi oqimini tekshiradi.

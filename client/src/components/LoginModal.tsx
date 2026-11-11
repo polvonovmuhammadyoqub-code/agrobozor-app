@@ -99,12 +99,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Telefon raqami yoki Email */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
+              <label htmlFor="login-identifier" className="block text-xs font-bold text-gray-700 mb-1">
                 Telefon raqami yoki Email
               </label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-identifier"
+                  autoComplete="username"
+                  autoCapitalize="none"
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -117,12 +120,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             {/* Parol */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
+              <label htmlFor="login-password" className="block text-xs font-bold text-gray-700 mb-1">
                 Parol
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-password"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

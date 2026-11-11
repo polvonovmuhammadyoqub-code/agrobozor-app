@@ -66,7 +66,7 @@ const ROLES = [
   {
     id: 'COURIER' as Role,
     emoji: '🚚',
-    title: "Kuryer (Logistika)",
+    title: "Logist (yetkazib beruvchi)",
     desc: "Buyurtmalarni yetkazib bering va har bir muvaffaqiyatli yetkazuvdan 12 000 so'm ishlang",
     color: 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900',
     activeColor: 'border-amber-500 bg-amber-50 ring-2 ring-amber-400',

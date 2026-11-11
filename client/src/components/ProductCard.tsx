@@ -15,9 +15,10 @@ import {
 interface ProductCardProps {
   product: Product;
   onOrderClick: (product: Product) => void;
+  onViewProduct: (product: Product) => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick, onViewProduct }) => {
   const { addToCart } = useCart();
   const [added, setAdded] = useState(false);
 
@@ -61,7 +62,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
   return (
     <div className="bg-white rounded-2xl border border-gray-200/90 hover:border-agro-green/50 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden group">
       {/* Rasm qismi */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100">
+      <button type="button" aria-label={`${product.title} haqida`} onClick={() => onViewProduct(product)} className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100 text-left">
         <img
           src={product.image_url}
           alt={product.title}
@@ -91,7 +92,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
             <span>PREMIUM FERMER</span>
           </div>
         )}
-      </div>
+      </button>
 
       {/* Kontent qismi */}
       <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
@@ -116,7 +117,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
 
           {/* Sarlavha */}
           <h3 className="font-bold text-gray-900 text-base leading-snug mb-2 group-hover:text-agro-green transition-colors line-clamp-2">
-            {product.title}
+            <button type="button" onClick={() => onViewProduct(product)} className="text-left hover:underline">{product.title}</button>
           </h3>
 
           {/* Manzil va Terim vaqti */}
@@ -164,6 +165,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOrderClick 
                     ? 'border-emerald-600 bg-emerald-600 text-white'
                     : 'border-agro-green/30 text-agro-green hover:bg-agro-paleGreen'
                 }`}
+                disabled={product.available_quantity_kg < product.min_order_kg}
                 title="Savatga qo'shish"
               >
                 {added ? <Check className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}

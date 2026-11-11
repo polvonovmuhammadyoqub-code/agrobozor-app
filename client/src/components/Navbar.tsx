@@ -1,304 +1,238 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
 import {
   Sprout,
-  ShoppingBag,
+  ShoppingBasket,
   Package,
   Tractor,
   Truck,
   ShieldCheck,
   Wallet,
   LogOut,
-  Search,
+  MessageCircle,
+  Plus,
   LogIn,
   UserPlus,
-  User,
-  PlusCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-
 interface NavbarProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
-  searchQuery: string;
-  setSearchQuery: (q: string) => void;
   openWalletModal: () => void;
   openCartDrawer: () => void;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
   onOpenAddProduct: () => void;
 }
-
-export const Navbar: React.FC<NavbarProps> = ({
-  currentTab,
-  setCurrentTab,
-  searchQuery,
-  setSearchQuery,
-  openWalletModal,
-  openCartDrawer,
-  onOpenLogin,
-  onOpenRegister,
-  onOpenAddProduct,
-}) => {
+export function Navbar(p: NavbarProps) {
+  const [unread, setUnread] = useState(0);
   const { user, logout } = useAuth();
-  const { totalQuantity } = useCart();
-
-  const getRoleBadge = (role?: string) => {
-    switch (role) {
-      case 'FARMER':
-        return { label: 'Fermer (Sotuvchi)', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
-      case 'BUYER_B2C':
-        return { label: 'Xaridor', color: 'bg-blue-100 text-blue-800 border-blue-300' };
-      case 'BUYER_B2B':
-        return { label: 'Biznes / B2B', color: 'bg-purple-100 text-purple-800 border-purple-300' };
-      case 'COURIER':
-        return { label: 'Kuryer', color: 'bg-amber-100 text-amber-800 border-amber-300' };
-      case 'ADMIN':
-        return { label: 'Admin', color: 'bg-rose-100 text-rose-800 border-rose-300' };
-      default:
-        return { label: 'Mehmon', color: 'bg-gray-100 text-gray-800 border-gray-300' };
-    }
-  };
-
-  const roleInfo = getRoleBadge(user?.role);
-
+  const { items } = useCart();
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const check = async () => {
+      try {
+        const data = await api.messages.unread();
+        if (active) setUnread(data.count);
+      } catch {
+        /* A missed badge update should not interrupt navigation. */
+      }
+    };
+    void check();
+    const timer = setInterval(() => {
+      if (!document.hidden) void check();
+    }, 15000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [user?.id, p.currentTab]);
+  const roleTab =
+    user?.role === 'FARMER'
+      ? 'farmer'
+      : user?.role === 'COURIER'
+        ? 'courier'
+        : user?.role === 'ADMIN'
+          ? 'admin'
+          : 'orders';
+  const RoleIcon =
+    user?.role === 'FARMER'
+      ? Tractor
+      : user?.role === 'COURIER'
+        ? Truck
+        : user?.role === 'ADMIN'
+          ? ShieldCheck
+          : Package;
+  const roleLabel =
+    user?.role === 'FARMER'
+      ? 'Kabinet'
+      : user?.role === 'COURIER'
+        ? 'Yetkazuvlar'
+        : user?.role === 'ADMIN'
+          ? 'Boshqaruv'
+          : 'Buyurtmalar';
+  const nav = [
+    ...(user && ['FARMER', 'COURIER', 'ADMIN'].includes(user.role)
+      ? [{ id: roleTab, label: roleLabel, Icon: RoleIcon }]
+      : []),
+    { id: 'marketplace', label: 'Bozor', Icon: ShoppingBasket },
+    ...(user && ['BUYER_B2C', 'BUYER_B2B'].includes(user.role)
+      ? [{ id: 'orders', label: 'Buyurtmalar', Icon: Package }]
+      : []),
+    ...(user
+      ? [{ id: 'messages', label: 'Xabarlar', Icon: MessageCircle }]
+      : []),
+  ];
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
-      {/* Top Banner */}
-      <div className="bg-agro-dark text-white px-4 py-1.5 text-xs">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-2">
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-agro-amber text-black uppercase tracking-wider">
-              100% Escrow
-            </span>
-            <span className="text-gray-300 text-[11px]">
-              O'zbekistonning Ishonchli va Xavfsiz Agro-Savdo Platformasi
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-4 text-[11px] text-gray-300">
-            <span className="hidden md:inline">📞 Qo'llab-quvvatlash: +998 (71) 200-00-00</span>
-            <span className="flex items-center space-x-1 text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Kafolatlangan To'lovlar</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Asosiy Navbar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between min-h-16 gap-3 py-3">
-          {/* Logo */}
-          <div
-            onClick={() => setCurrentTab('marketplace')}
-            className="flex items-center space-x-2.5 cursor-pointer select-none group flex-shrink-0"
+    <>
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2">
+          <button
+            onClick={() =>
+              p.setCurrentTab(
+                user
+                  ? roleTab === 'orders'
+                    ? 'marketplace'
+                    : roleTab
+                  : 'welcome',
+              )
+            }
+            className="flex items-center gap-2 font-black text-xl text-agro-dark"
           >
-            <div className="w-10 h-10 rounded-xl bg-agro-green flex items-center justify-center text-white shadow-md shadow-emerald-900/20 group-hover:bg-agro-lightGreen transition-colors">
-              <Sprout className="w-6 h-6 text-agro-amber" />
-            </div>
-            <div>
-              <div className="text-xl font-black tracking-tight text-agro-dark flex items-center">
-                <span>Agro</span>
-                <span className="text-agro-amber">Bozor</span>
-              </div>
-              <p className="text-[10px] text-gray-500 font-medium -mt-1 hidden sm:block">
-                Hosil bevosita daladan
-              </p>
-            </div>
-          </div>
-
-          {/* Qidiruv qutisi */}
-          <div className="flex-1 max-w-md hidden md:block">
-            <div className="relative">
-              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Mahsulotlarni qidiring (masalan: Parkent uzumi, olma)..."
-                className="w-full bg-gray-50 hover:bg-gray-100/80 focus:bg-white text-sm pl-9 pr-4 py-2 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none focus:ring-2 focus:ring-agro-green/20 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Navigatsiya Tugmalari */}
-          <nav className="flex items-center space-x-1 sm:space-x-2">
-            <button
-              onClick={() => setCurrentTab('marketplace')}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                currentTab === 'marketplace'
-                  ? 'bg-agro-paleGreen text-agro-green'
-                  : 'text-gray-600 hover:text-agro-dark hover:bg-gray-100'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Bozor</span>
-            </button>
-
-            {/* Faqat tizimga kirgan foydalanuvchilar uchun tablar */}
-            {user && (
-              <>
-                <button
-                  onClick={() => setCurrentTab('orders')}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                    currentTab === 'orders'
-                      ? 'bg-agro-paleGreen text-agro-green'
-                      : 'text-gray-600 hover:text-agro-dark hover:bg-gray-100'
-                  }`}
-                >
-                  <Package className="w-4 h-4" />
-                  <span className="hidden sm:inline">Buyurtmalar</span>
-                </button>
-
-                {(user?.role === 'FARMER' || user?.role === 'ADMIN') && (
-                  <button
-                    onClick={() => setCurrentTab('farmer')}
-                    className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      currentTab === 'farmer'
-                        ? 'bg-agro-paleGreen text-agro-green'
-                        : 'text-gray-600 hover:text-agro-dark hover:bg-gray-100'
-                    }`}
-                  >
-                    <Tractor className="w-4 h-4 text-emerald-600" />
-                    <span className="hidden sm:inline">Fermer Kabineti</span>
-                  </button>
-                )}
-
-                {(user?.role === 'COURIER' || user?.role === 'ADMIN') && (
-                  <button
-                    onClick={() => setCurrentTab('courier')}
-                    className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      currentTab === 'courier'
-                        ? 'bg-agro-paleGreen text-agro-green'
-                        : 'text-gray-600 hover:text-agro-dark hover:bg-gray-100'
-                    }`}
-                  >
-                    <Truck className="w-4 h-4 text-amber-600" />
-                    <span className="hidden sm:inline">Kuryer</span>
-                  </button>
-                )}
-
-                {user?.role === 'ADMIN' && (
-                  <button
-                    onClick={() => setCurrentTab('admin')}
-                    className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      currentTab === 'admin'
-                        ? 'bg-agro-paleGreen text-agro-green'
-                        : 'text-gray-600 hover:text-agro-dark hover:bg-gray-100'
-                    }`}
-                  >
-                    <ShieldCheck className="w-4 h-4 text-rose-600" />
-                    <span className="hidden sm:inline">Admin</span>
-                  </button>
-                )}
-              </>
-            )}
-          </nav>
-
-          {/* O'ng tomon */}
-          <div className="flex items-center space-x-2">
-            {/* Mahsulot qo'shish / Hosilni sotish TUGMASI (Har kim uchun ochiq) */}
-            <button
-              onClick={onOpenAddProduct}
-              className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-900/10 active:scale-95"
-              title="O'z hosilingizni sotuvga chiqaring"
-            >
-              <PlusCircle className="w-4 h-4 text-agro-amber" />
-              <span className="hidden md:inline">Mahsulot qo'shish</span>
-              <span className="md:hidden">Sotish</span>
-            </button>
-
-            {user ? (
-              /* ===== TIZIMGA KIRGAN: Profil, Hamyon, Savat, Chiqish ===== */
-              <>
-                {/* Foydalanuvchi info */}
-                <div className="hidden lg:flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5">
-                  <User className="w-4 h-4 text-agro-green shrink-0" />
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-agro-dark leading-tight truncate max-w-[110px]">
-                      {user.full_name}
-                    </div>
-                    <span className={`text-[9px] px-1.5 py-0 rounded-full border font-bold ${roleInfo.color}`}>
-                      {roleInfo.label}
+            <Sprout className="text-emerald-700" size={26} />
+            <span>
+              Agro<span className="text-amber-600">Bozor</span>
+            </span>
+          </button>
+          <nav aria-label="Asosiy menyu" className="hidden md:flex gap-1">
+            {nav.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                aria-label={label}
+                aria-current={p.currentTab === id ? 'page' : undefined}
+                onClick={() => p.setCurrentTab(id)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold ${p.currentTab === id ? 'bg-emerald-50 text-emerald-800' : 'text-gray-500'}`}
+              >
+                <span className="relative">
+                  <Icon size={18} />
+                  {id === 'messages' && unread > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-2 -right-2 bg-amber-400 text-black text-[9px] px-1 rounded-full"
+                    >
+                      {unread > 99 ? '99+' : unread}
                     </span>
-                  </div>
-                </div>
-
-                {/* Hamyon Tugmasi */}
+                  )}
+                </span>
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="flex items-center gap-1 sm:gap-2">
+            {user ? (
+              <>
+                <span className="hidden xl:block text-xs text-gray-500 max-w-28 truncate">
+                  {user.full_name}
+                </span>
+                {user.role === 'FARMER' && (
+                  <button
+                    aria-label="Mahsulot qo‘shish"
+                    title="Mahsulot qo‘shish"
+                    onClick={p.onOpenAddProduct}
+                    className="p-2 rounded-xl bg-agro-green text-white"
+                  >
+                    <Plus size={20} />
+                  </button>
+                )}
                 <button
-                  onClick={openWalletModal}
-                  className="flex items-center space-x-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-800 transition-colors"
-                  title="Hamyon va hisob balansi"
-                >
-                  <Wallet className="w-4 h-4 text-agro-green" />
-                  <div className="text-left hidden xl:block">
-                    <div className="font-bold text-agro-dark text-xs">
-                      {(user?.wallet_available || 0).toLocaleString()} so'm
-                    </div>
-                  </div>
-                </button>
-
-                {/* Savat Tugmasi */}
-                <button
-                  onClick={openCartDrawer}
-                  className="relative p-2.5 rounded-xl bg-agro-paleGreen text-agro-green hover:bg-emerald-100 transition-colors"
                   title="Savat"
+                  onClick={p.openCartDrawer}
+                  className="p-2 rounded-xl bg-emerald-50 text-emerald-800 relative"
                 >
-                  <ShoppingBag className="w-5 h-5" />
-                  {totalQuantity > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-agro-amber text-black font-bold text-xs rounded-full flex items-center justify-center shadow">
-                      {totalQuantity}
+                  <ShoppingBasket size={20} />
+                  {items.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-amber-400 text-black text-[10px] rounded-full px-1.5">
+                      {items.length}
                     </span>
                   )}
                 </button>
-
-                {/* Chiqish Tugmasi */}
                 <button
-                  onClick={logout}
-                  className="flex items-center space-x-1 px-2.5 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-all"
                   title="Tizimdan chiqish"
+                  aria-label="Tizimdan chiqish"
+                  onClick={logout}
+                  className="p-2 text-gray-500"
                 >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden sm:inline">Chiqish</span>
+                  <LogOut size={19} />
                 </button>
               </>
             ) : (
-              /* ===== MEHMON: Savat, Kirish va Ro'yxatdan o'tish ===== */
               <>
                 <button
-                  onClick={openCartDrawer}
-                  className="relative p-2 rounded-xl bg-agro-paleGreen text-agro-green hover:bg-emerald-100 transition-colors"
-                  title="Savat"
+                  onClick={p.onOpenLogin}
+                  className="text-sm font-semibold text-emerald-800 p-2"
                 >
-                  <ShoppingBag className="w-5 h-5" />
-                  {totalQuantity > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-agro-amber text-black font-bold text-xs rounded-full flex items-center justify-center shadow">
-                      {totalQuantity}
-                    </span>
-                  )}
+                  <LogIn className="inline mr-1" size={16} />
+                  Kirish
                 </button>
-
                 <button
-                  onClick={onOpenLogin}
-                  className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold text-agro-dark border border-gray-300 hover:border-agro-green hover:text-agro-green hover:bg-agro-paleGreen transition-all"
+                  onClick={p.onOpenRegister}
+                  aria-label="Ro‘yxatdan o‘tish"
+                  className="bg-agro-green text-white p-2 rounded-xl"
                 >
-                  <LogIn className="w-4 h-4" />
-                  <span>Kirish</span>
-                </button>
-
-                <button
-                  onClick={onOpenRegister}
-                  className="hidden sm:flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-agro-green hover:bg-agro-lightGreen shadow-sm shadow-emerald-900/20 transition-all"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span>Ro'yxatdan o'tish</span>
+                  <UserPlus size={19} />
                 </button>
               </>
             )}
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {user && (
+        <nav
+          aria-label="Pastki menyu"
+          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-gray-100 flex justify-around pb-[env(safe-area-inset-bottom)]"
+        >
+          {nav.map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              aria-label={label}
+              aria-current={p.currentTab === id ? 'page' : undefined}
+              onClick={() => p.setCurrentTab(id)}
+              className={`flex-1 min-w-0 py-3 flex flex-col items-center gap-1 text-[11px] font-semibold ${p.currentTab === id ? 'text-emerald-800 bg-emerald-50/60' : 'text-gray-400'}`}
+            >
+              <span className="relative">
+                <Icon size={21} />
+                {id === 'messages' && unread > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-2 -right-3 bg-amber-400 text-black text-[9px] px-1 rounded-full"
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </span>
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={p.openWalletModal}
+            className="flex-1 py-3 flex flex-col items-center gap-1 text-[11px] text-gray-400 font-semibold"
+          >
+            <Wallet size={21} />
+            Hamyon
+          </button>
+        </nav>
+      )}
+      {user && (
+        <button
+          onClick={p.openWalletModal}
+          className="hidden md:block fixed bottom-6 right-6 z-40 bg-agro-green text-white p-4 rounded-2xl shadow-lg"
+          title="Hamyon"
+        >
+          <Wallet size={22} />
+        </button>
+      )}
+    </>
   );
-};
+}
