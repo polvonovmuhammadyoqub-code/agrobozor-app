@@ -43,6 +43,7 @@ model User {
   reviews_given       Review[]       @relation("Reviewer")
   reviews_received    Review[]       @relation("ReviewTarget")
   notifications       Notification[]
+  audit_logs          AuditLog[]
 }
 
 model Product {
@@ -115,6 +116,7 @@ model Order {
   dispute                   Dispute?
   reviews                   Review[]
   notifications             Notification[]
+  audit_logs                AuditLog[]
 }
 
 model Transaction {
@@ -176,6 +178,22 @@ model Review {
   order          Order    @relation(fields: [order_id], references: [id])
   reviewer       User     @relation("Reviewer", fields: [reviewer_id], references: [id])
   target_user    User     @relation("ReviewTarget", fields: [target_user_id], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actor_id   String
+  action     String   // 'ORDER_DELIVER_OVERRIDE', 'ORDER_RESET_PIN', etc.
+  order_id   String?
+  reason     String?
+  created_at DateTime @default(now())
+
+  // Relations
+  actor      User     @relation(fields: [actor_id], references: [id])
+  order      Order?   @relation(fields: [order_id], references: [id])
+
+  @@index([actor_id, created_at])
+  @@index([order_id, created_at])
 }
 
 model EmailVerification {

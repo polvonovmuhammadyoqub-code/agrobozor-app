@@ -86,6 +86,8 @@ export interface Order {
   status: OrderStatus;
   delivery_address: string;
   delivery_schedule?: string | null;
+  delivery_pin?: string | null;
+  delivery_pin_attempts?: number;
   created_at: string;
   product: Product;
   buyer: {

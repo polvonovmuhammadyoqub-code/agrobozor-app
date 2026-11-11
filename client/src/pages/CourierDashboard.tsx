@@ -23,6 +23,8 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'available' | 'active' | 'history'>('available');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [pinValues, setPinValues] = useState<Record<string, string>>({});
+  const [pinErrors, setPinErrors] = useState<Record<string, string>>({});
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -54,13 +56,25 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
   };
 
   const handleDeliverOrder = async (orderId: string) => {
+    const pin = (pinValues[orderId] || '').trim();
+    if (!/^\d{4}$/.test(pin)) {
+      setPinErrors((prev) => ({ ...prev, [orderId]: 'Mijozdan olingan 4 xonali PIN kodni kiriting' }));
+      return;
+    }
     setActionLoading(orderId);
+    setPinErrors((prev) => ({ ...prev, [orderId]: '' }));
     try {
-      await api.orders.updateStatus(orderId, 'DELIVERED');
+      await api.orders.updateStatus(orderId, 'DELIVERED', pin);
       await refreshUser();
+      setPinValues((prev) => {
+        const next = { ...prev };
+        delete next[orderId];
+        return next;
+      });
       fetchOrders();
     } catch (err: any) {
-      alert(err.message || 'Xatolik');
+      setPinErrors((prev) => ({ ...prev, [orderId]: err.message || 'Xatolik yuz berdi' }));
+      fetchOrders();
     } finally {
       setActionLoading(null);
     }
@@ -233,38 +247,76 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
             </div>
           ) : (
             <div className="space-y-4">
-              {activeOrders.map((o) => (
-                <div
-                  key={o.id}
-                  className="p-5 rounded-2xl border border-amber-200 bg-amber-50/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs"
-                >
-                  <div className="space-y-1.5 flex-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-extrabold text-sm text-gray-900">
-                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
-                      </span>
-                      <span className="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                        Yo'lda
-                      </span>
+              {activeOrders.map((o) => {
+                const attempts = o.delivery_pin_attempts || 0;
+                const remaining = Math.max(0, 5 - attempts);
+                const isBlocked = attempts >= 5;
+
+                return (
+                  <div
+                    key={o.id}
+                    className="p-5 rounded-2xl border border-amber-200 bg-amber-50/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs"
+                  >
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-sm text-gray-900">
+                          {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
+                        </span>
+                        <span className="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                          Yo'lda
+                        </span>
+                      </div>
+                      <div className="text-gray-700">
+                        Yetkazish manzili: <strong>{o.delivery_address}</strong>
+                      </div>
+                      <div className="text-gray-600">
+                        Mijoz: {o.buyer?.full_name || 'Xaridor'} ({o.buyer?.phone || ''})
+                      </div>
                     </div>
-                    <div className="text-gray-700">
-                      Yetkazish manzili: <strong>{o.delivery_address}</strong>
-                    </div>
-                    <div className="text-gray-600">
-                      Mijoz: {o.buyer?.full_name || 'Xaridor'} ({o.buyer?.phone || ''})
+
+                    <div className="w-full sm:w-auto flex flex-col items-stretch sm:items-end gap-2">
+                      {isBlocked ? (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-center sm:text-right">
+                          <div className="text-red-700 font-bold text-xs">PIN bloklangan (5 ta xato urinish)</div>
+                          <div className="text-[11px] text-red-600">Admin bilan bog'laning yoki xaridor admin bilan bog'lansin</div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={4}
+                              placeholder="PIN: 0000"
+                              value={pinValues[o.id] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                setPinValues((prev) => ({ ...prev, [o.id]: val }));
+                              }}
+                              className="w-28 px-3 py-2 text-center font-mono font-bold tracking-widest text-sm bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                            />
+                            <button
+                              onClick={() => handleDeliverOrder(o.id)}
+                              disabled={actionLoading === o.id || (pinValues[o.id] || '').length !== 4}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-900/15 flex items-center space-x-1.5 disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{actionLoading === o.id ? 'Tekshirilmoqda...' : 'Mijozga Yetkazdim'}</span>
+                            </button>
+                          </div>
+                          <div className="flex justify-between sm:justify-end items-center text-[11px] text-gray-500 w-full space-x-2">
+                            <span>Qolgan urinishlar: <strong className={remaining <= 2 ? 'text-red-600' : 'text-gray-700'}>{remaining} ta</strong></span>
+                          </div>
+                        </>
+                      )}
+                      {pinErrors[o.id] && (
+                        <p className="text-[11px] text-red-600 font-medium">{pinErrors[o.id]}</p>
+                      )}
                     </div>
                   </div>
-
-                  <button
-                    onClick={() => handleDeliverOrder(o.id)}
-                    disabled={actionLoading === o.id}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-5 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-900/15 flex items-center space-x-2 disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Mijozga Yetkazdim</span>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
         ) : (

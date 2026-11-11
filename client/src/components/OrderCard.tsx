@@ -152,15 +152,59 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     }
   };
 
-  // Kuryer yetkazildi deb belgilashi
+  const [courierPin, setCourierPin] = useState('');
+  const [showPinBox, setShowPinBox] = useState(false);
+
+  // Kuryer yetkazildi deb belgilashi (PIN kodi bilan)
   const handleCourierDeliver = async () => {
+    if (!courierPin || courierPin.length !== 4) {
+      alert('Iltimos, 4 xonali PIN kodni kiriting');
+      return;
+    }
     setLoadingAction('deliver');
     try {
-      await api.orders.updateStatus(order.id, 'DELIVERED');
+      await api.orders.updateStatus(order.id, 'DELIVERED', courierPin);
       await refreshUser();
+      setShowPinBox(false);
+      setCourierPin('');
       onRefresh();
     } catch (err: any) {
       alert(err.message || 'Xatolik yuz berdi');
+      onRefresh();
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Admin: qo'lda yetkazildi deb tasdiqlash
+  const handleAdminDeliverOverride = async () => {
+    const reason = prompt("Yetkazishni qo'lda tasdiqlash sababini yozing (kamida 5 belgi):");
+    if (!reason || reason.trim().length < 5) {
+      if (reason !== null) alert("Sabab kiritilishi shart (kamida 5 ta belgi)");
+      return;
+    }
+    setLoadingAction('override');
+    try {
+      await api.admin.deliverOverride(order.id, reason.trim());
+      alert("Buyurtma admin tomonidan 'DELIVERED' holatiga o'tkazildi");
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message || "Xatolik yuz berdi");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Admin: PIN kodni yangilash va urinishlarni nolga tushirish
+  const handleAdminResetPin = async () => {
+    const reason = prompt("PIN kodini yangilash sababi (ixtiyoriy):", "Mijoz PIN kodni unutgan yoki urinishlar tugagan") || '';
+    setLoadingAction('resetPin');
+    try {
+      await api.admin.resetPin(order.id, reason);
+      alert("Yangi PIN yaratildi va urinishlar soni 0 ga tushirildi. Yangi PIN faqat xaridorga ko'rinadi.");
+      onRefresh();
+    } catch (err: any) {
+      alert(err.message || "Xatolik yuz berdi");
     } finally {
       setLoadingAction(null);
     }
@@ -348,6 +392,22 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </div>
       )}
 
+      {/* Xaridor uchun Yetkazish PIN kodi bloki (IN_TRANSIT holatida katta shriftda) */}
+      {user?.id === order.buyer_id && order.status === 'IN_TRANSIT' && order.delivery_pin && (
+        <div className="p-4 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-300 rounded-2xl text-center space-y-1 shadow-sm">
+          <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center justify-center space-x-1.5">
+            <ShieldCheck className="w-4 h-4 text-amber-600" />
+            <span>Yetkazish PIN Kodi</span>
+          </div>
+          <div className="text-3xl sm:text-4xl font-black text-amber-600 tracking-widest font-mono py-1">
+            {order.delivery_pin}
+          </div>
+          <p className="text-xs font-bold text-amber-900">
+            Kuryerga faqat mahsulotni qabul qilganda ayting
+          </p>
+        </div>
+      )}
+
       {/* Harakatlar Tugmalari (Har bir rol uchun) */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
         <div className="flex items-center space-x-2">
@@ -401,15 +461,70 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             </button>
           )}
 
-          {/* Kuryer yetkazildi deb belgilashi */}
+          {/* Kuryer yetkazildi deb belgilashi (PIN kodi bilan) */}
           {isCourier && order.status === 'IN_TRANSIT' && (
-            <button
-              onClick={handleCourierDeliver}
-              disabled={loadingAction === 'deliver'}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm disabled:opacity-50"
-            >
-              {loadingAction === 'deliver' ? 'Belgilanmoqda...' : 'Mijozga Yetkazdim'}
-            </button>
+            showPinBox ? (
+              <div className="flex items-center space-x-2 bg-emerald-50 p-1.5 rounded-xl border border-emerald-200">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={courierPin}
+                  onChange={(e) => setCourierPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="PIN"
+                  className="w-20 p-1 text-center font-mono font-bold text-xs tracking-widest rounded-lg border border-gray-300 focus:border-emerald-600 focus:outline-none bg-white"
+                />
+                <button
+                  onClick={handleCourierDeliver}
+                  disabled={loadingAction === 'deliver' || courierPin.length !== 4}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1 rounded-lg disabled:opacity-50"
+                >
+                  {loadingAction === 'deliver' ? 'Tekshirilmoqda...' : 'Tasdiqlash'}
+                </button>
+                <button
+                  onClick={() => setShowPinBox(false)}
+                  className="text-xs text-gray-500 hover:text-gray-700 px-1.5 py-1"
+                >
+                  Bekor
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  if ((order.delivery_pin_attempts || 0) >= 5) {
+                    alert("Yetkazish bloklangan (5 ta noto'g'ri urinish). Admin bilan bog'laning");
+                    return;
+                  }
+                  setShowPinBox(true);
+                }}
+                disabled={loadingAction === 'deliver'}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center space-x-1"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Mijozga Yetkazdim</span>
+              </button>
+            )
+          )}
+
+          {/* Admin Harakatlari: Deliver Override va Reset PIN */}
+          {user?.role === 'ADMIN' && order.status === 'IN_TRANSIT' && (
+            <div className="flex items-center space-x-1.5">
+              <button
+                onClick={handleAdminDeliverOverride}
+                disabled={loadingAction === 'override'}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors shadow-sm disabled:opacity-50"
+              >
+                {loadingAction === 'override' ? 'Bajarilmoqda...' : "Qo'lda Yetkazish (Admin)"}
+              </button>
+              <button
+                onClick={handleAdminResetPin}
+                disabled={loadingAction === 'resetPin'}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-colors shadow-sm disabled:opacity-50"
+              >
+                {loadingAction === 'resetPin' ? 'Yangilanmoqda...' : 'PIN ni yangilash (Reset)'}
+              </button>
+            </div>
           )}
 
           {/* Xaridor Harakatlari: Qabul qildim yoki Shikoyat */}

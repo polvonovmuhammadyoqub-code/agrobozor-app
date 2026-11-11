@@ -33,6 +33,10 @@ function sanitize(order, u) {
     if (u.role !== 'ADMIN' && o.transactions) {
         o.transactions = o.transactions.filter((t) => t.user_id === u.id);
     }
+    // PIN faqat o'sha buyurtmaning xaridoriga qaytadi. Fermer, kuryer va adminga delivery_pin HECH QACHON qaytmasin!
+    if (o.buyer_id !== u.id) {
+        delete o.delivery_pin;
+    }
     return o;
 }
 // Nizo dalili uchun xavfsiz 300 soniyalik signed URL biriktirish
@@ -279,7 +283,8 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
             updated = await courierPickup(user, req.params.id);
         }
         else if (status === 'DELIVERED') {
-            updated = await courierDeliver(user, req.params.id);
+            const pin = req.body?.pin;
+            updated = await courierDeliver(user, req.params.id, pin);
         }
         else {
             return res.status(400).json({ error: "Bu holatga to'g'ridan-to'g'ri o'tib bo'lmaydi" });

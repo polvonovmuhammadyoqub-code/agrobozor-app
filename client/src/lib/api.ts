@@ -134,10 +134,10 @@ export const api = {
       }),
     cancel: (id: string) => request<{ message: string }>(`/orders/${id}/cancel`, { method: 'POST' }),
     reject: (id: string) => request<{ message: string }>(`/orders/${id}/reject`, { method: 'POST' }),
-    updateStatus: (id: string, status: string) =>
+    updateStatus: (id: string, status: string, pin?: string) =>
       request<Order>(`/orders/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, pin }),
       }),
     complete: (id: string) =>
       request<{ message: string; order: Order }>(`/orders/${id}/complete`, {
@@ -180,6 +180,16 @@ export const api = {
         body: JSON.stringify({ status }),
       }),
     getTransactions: () => request<Transaction[]>('/admin/transactions'),
+    deliverOverride: (orderId: string, reason: string) =>
+      request<{ message: string }>(`/admin/orders/${orderId}/deliver-override`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    resetPin: (orderId: string, reason?: string) =>
+      request<{ message: string }>(`/admin/orders/${orderId}/reset-pin`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
   },
 
   // Users & Wallet

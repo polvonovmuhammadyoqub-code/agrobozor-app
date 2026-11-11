@@ -1,5 +1,6 @@
 // Buyurtma amallari servisi — route va bot bir xil mantiqni ishlatadi
 // Atomik updateMany va egalik tekshiruvlari saqlanadi
+import crypto from 'crypto';
 import prisma from '../db.js';
 import { chargeOrder } from './payment.js';
 import { holdInEscrow, settleOrder } from './settlement.js';
@@ -11,6 +12,10 @@ export class OrderActionError extends Error {
         this.code = code;
         this.name = 'OrderActionError';
     }
+}
+/** 4 xonali (0000–9999) xavfsiz tasodifiy yetkazish PIN kodi */
+export function generateDeliveryPin() {
+    return crypto.randomInt(0, 10000).toString().padStart(4, '0');
 }
 // ——— To'lov: PENDING_PAYMENT → PAID_IN_ESCROW ———
 export async function payOrder(actor, orderId) {
@@ -29,10 +34,16 @@ export async function payOrder(actor, orderId) {
     if (!charge.ok) {
         throw new OrderActionError('PAYMENT_FAILED', charge.error || "To'lov amalga oshmadi");
     }
+    const deliveryPin = generateDeliveryPin();
     const updated = await prisma.$transaction(async (tx) => {
         const r = await tx.order.updateMany({
             where: { id: order.id, status: 'PENDING_PAYMENT' },
-            data: { status: 'PAID_IN_ESCROW', paid_at: new Date() },
+            data: {
+                status: 'PAID_IN_ESCROW',
+                paid_at: new Date(),
+                delivery_pin: deliveryPin,
+                delivery_pin_attempts: 0,
+            },
         });
         if (r.count !== 1)
             throw new OrderActionError('BAD_STATE', "Buyurtma holati o'zgargan, sahifani yangilang");
@@ -93,18 +104,27 @@ export async function courierPickup(actor, orderId) {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order)
         throw new OrderActionError('NOT_FOUND', 'Buyurtma topilmadi');
+    const dataToUpdate = {
+        status: 'IN_TRANSIT',
+        courier_id: actor.id,
+        picked_up_at: new Date(),
+    };
+    // PIN'i yo'q eski buyurtmalar uchun PIN courierPickup da yaratilsin
+    if (!order.delivery_pin) {
+        dataToUpdate.delivery_pin = generateDeliveryPin();
+        dataToUpdate.delivery_pin_attempts = 0;
+    }
     const result = await prisma.order.updateMany({
         where: { id: order.id, status: 'CONFIRMED_BY_FARMER', courier_id: null },
-        data: { status: 'IN_TRANSIT', courier_id: actor.id, picked_up_at: new Date() },
+        data: dataToUpdate,
     });
     if (result.count !== 1) {
         throw new OrderActionError('BAD_STATE', "Buyurtma holati mos emas yoki boshqa kuryer allaqachon olgan");
     }
     return prisma.order.findUnique({ where: { id: order.id } });
 }
-// ——— Kuryer yetkazdi: IN_TRANSIT → DELIVERED ———
-// PIN tekshiruvi E bo'lakda qo'shiladi; hozir PIN'siz ishlaydi (mavjud xatti-harakat saqlanadi)
-export async function courierDeliver(actor, orderId) {
+// ——— Kuryer yetkazdi: IN_TRANSIT → DELIVERED (PIN kodi bilan) ———
+export async function courierDeliver(actor, orderId, inputPin) {
     if (actor.role !== 'COURIER') {
         throw new OrderActionError('FORBIDDEN', 'Faqat biriktirilgan kuryer yetkazildi deb belgilay oladi');
     }
@@ -114,9 +134,48 @@ export async function courierDeliver(actor, orderId) {
     if (order.courier_id !== actor.id) {
         throw new OrderActionError('FORBIDDEN', 'Faqat biriktirilgan kuryer yetkazildi deb belgilay oladi');
     }
+    if (order.status !== 'IN_TRANSIT') {
+        throw new OrderActionError('BAD_STATE', "Buyurtma holati mos emas (faqat 'IN_TRANSIT' holatidagi buyurtmani yetkazish mumkin)");
+    }
+    // 1. Agar urinishlar soni 5 yoki undan ko'p bo'lsa, yetkazish bloklangan
+    if (order.delivery_pin_attempts >= 5) {
+        throw new OrderActionError('BAD_STATE', 'Yetkazish bloklangan (5 ta noto‘g‘ri urinish). Admin bilan bog‘laning');
+    }
+    // 2. PIN kodi mavjudligini tekshirish
+    const cleanPin = String(inputPin || '').trim();
+    if (!cleanPin || cleanPin.length !== 4) {
+        throw new OrderActionError('VALIDATION', '4 xonali yetkazish PIN kodini kiriting');
+    }
+    // 3. timingSafeEqual bilan xavfsiz solishtirish
+    const pinBuffer = Buffer.from(cleanPin, 'utf-8');
+    const actualBuffer = Buffer.from(order.delivery_pin || '', 'utf-8');
+    const isMatch = pinBuffer.length === actualBuffer.length && crypto.timingSafeEqual(pinBuffer, actualBuffer);
+    if (!isMatch) {
+        // Atomik ravishda urinishlar sonini 1 taga oshirish
+        const updated = await prisma.order.update({
+            where: { id: order.id },
+            data: { delivery_pin_attempts: { increment: 1 } },
+            select: { delivery_pin_attempts: true },
+        });
+        const attempts = updated.delivery_pin_attempts;
+        if (attempts >= 5) {
+            throw new OrderActionError('BAD_STATE', 'PIN kodi 5 marta noto‘g‘ri kiritildi va yetkazish bloklandi. Admin bilan bog‘laning');
+        }
+        const remaining = 5 - attempts;
+        throw new OrderActionError('VALIDATION', `Noto‘g‘ri PIN kodi. Qolgan urinishlar: ${remaining} ta`);
+    }
+    // 4. PIN to'g'ri bo'lsa: atomik ravishda DELIVERED holatiga o'tkazish
     const result = await prisma.order.updateMany({
-        where: { id: order.id, status: 'IN_TRANSIT', courier_id: actor.id },
-        data: { status: 'DELIVERED', delivered_at: new Date() },
+        where: {
+            id: order.id,
+            status: 'IN_TRANSIT',
+            courier_id: actor.id,
+            delivery_pin_attempts: { lt: 5 },
+        },
+        data: {
+            status: 'DELIVERED',
+            delivered_at: new Date(),
+        },
     });
     if (result.count !== 1) {
         throw new OrderActionError('BAD_STATE', "Buyurtma holati mos emas yoki allaqachon o'zgargan");
