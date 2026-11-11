@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Product, PaymentMethod } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { formatQty, formatUnitName } from '../lib/units';
+import { TASHKENT_CITY_DISTRICTS, TASHKENT_REGION_DISTRICTS } from '../lib/districts';
 import {
   X,
   ShieldCheck,
@@ -27,6 +29,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const { user, refreshUser } = useAuth();
 
   const [quantity, setQuantity] = useState<number>(product?.min_order_kg || 1);
+  const [deliveryDistrict, setDeliveryDistrict] = useState<string>('');
   const [address, setAddress] = useState<string>(user?.region ? `${user.region}, Markaziy ko'cha 1` : '');
   const [schedule, setSchedule] = useState<string>(
     user?.role === 'BUYER_B2B' ? 'Har dushanba va payshanba soat 09:00 gacha' : ''
@@ -49,12 +52,12 @@ export const OrderModal: React.FC<OrderModalProps> = ({
     setError(null);
 
     if (quantity < product.min_order_kg) {
-      setError(`Minimal buyurtma miqdori: ${product.min_order_kg} kg`);
+      setError(`Minimal buyurtma miqdori: ${formatQty(product.min_order_kg, product.unit)}`);
       return;
     }
 
     if (quantity > product.available_quantity_kg) {
-      setError(`Omborda yetarli mahsulot yo'q. Mavjud: ${product.available_quantity_kg} kg`);
+      setError(`Omborda yetarli mahsulot yo'q. Mavjud: ${formatQty(product.available_quantity_kg, product.unit)}`);
       return;
     }
 
@@ -71,6 +74,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         payment_method: paymentMethod,
         delivery_address: address,
         delivery_schedule: schedule || undefined,
+        delivery_district: deliveryDistrict || undefined,
       });
 
       // 2-qadam: to'lov. Muvaffaqiyatsiz bo'lsa buyurtma bekor qilinadi va ombor qoldig'i qaytadi.
@@ -150,7 +154,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                 Fermer: {product.farmer?.farm_or_company_name || product.farmer?.full_name} ({product.region})
               </div>
               <div className="text-xs font-bold text-agro-green mt-0.5">
-                {product.price_per_kg.toLocaleString()} so'm / kg
+                {product.price_per_kg.toLocaleString()} so'm / {formatUnitName(product.unit)}
               </div>
             </div>
           </div>
@@ -158,9 +162,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
           {/* Miqdor tanlash */}
           <div>
             <div className="flex justify-between items-center mb-1 text-xs">
-              <label className="font-bold text-gray-700">Miqdor (kg):</label>
+              <label className="font-bold text-gray-700">Miqdor ({formatUnitName(product.unit)}):</label>
               <span className="text-gray-500">
-                Mavjud qoldiq: <strong>{product.available_quantity_kg} kg</strong> (Min: {product.min_order_kg} kg)
+                Mavjud qoldiq: <strong>{formatQty(product.available_quantity_kg, product.unit)}</strong> (Min: {formatQty(product.min_order_kg, product.unit)})
               </span>
             </div>
             <div className="flex items-center space-x-3">
@@ -189,19 +193,44 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             </div>
           </div>
 
-          {/* Yetkazib berish manzili */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              Yetkazib berish manzili:
-            </label>
-            <input
-              type="text"
-              required
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Shahar/tuman, ko'cha, uy raqami..."
-              className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none focus:ring-1 focus:ring-agro-green"
-            />
+          {/* Yetkazib berish tumani va manzili */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Yetkazish tumani (ixtiyoriy):
+              </label>
+              <select
+                value={deliveryDistrict}
+                onChange={(e) => setDeliveryDistrict(e.target.value)}
+                className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white focus:border-agro-green focus:outline-none"
+              >
+                <option value="">Tumanni tanlang...</option>
+                <optgroup label="Toshkent shahri">
+                  {TASHKENT_CITY_DISTRICTS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Toshkent viloyati">
+                  {TASHKENT_REGION_DISTRICTS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Yetkazib berish manzili:
+              </label>
+              <input
+                type="text"
+                required
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Ko'cha, uy raqami, xonadon..."
+                className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none focus:ring-1 focus:ring-agro-green"
+              />
+            </div>
           </div>
 
           {/* B2B Yetkazib berish jadvali (Doimiy jadval) */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Order } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { formatQty } from '../lib/units';
 import {
   Truck,
   CheckCircle2,
@@ -208,7 +209,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="font-extrabold text-sm text-gray-900">
-                        {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
+                        {o.product?.title || 'Agro mahsulot'} ({formatQty(o.quantity_kg, o.product?.unit)})
                       </span>
                       <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
                         +12 000 so'm kuryer haqi
@@ -260,7 +261,7 @@ export const CourierDashboard: React.FC<CourierDashboardProps> = ({ onOpenInvoic
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center space-x-2">
                         <span className="font-extrabold text-sm text-gray-900">
-                          {o.product?.title || 'Agro mahsulot'} ({o.quantity_kg} kg)
+                          {o.product?.title || 'Agro mahsulot'} ({formatQty(o.quantity_kg, o.product?.unit)})
                         </span>
                         <span className="bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full text-[10px]">
                           Yo'lda

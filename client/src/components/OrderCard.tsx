@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Order, OrderStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
+import { formatQty } from '../lib/units';
 import {
   Package,
   Truck,
@@ -298,7 +299,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               Fermer: <strong className="text-gray-700">{order.farmer?.farm_or_company_name || order.farmer?.full_name}</strong> ({order.farmer?.region})
             </div>
             <div className="text-xs text-gray-600 mt-1">
-              Miqdor: <strong className="text-gray-900">{order.quantity_kg} kg</strong> × {order.product?.price_per_kg?.toLocaleString()} so'm
+              Miqdor: <strong className="text-gray-900">{formatQty(order.quantity_kg, order.product?.unit)}</strong> × {order.product?.price_per_kg?.toLocaleString()} so'm
             </div>
           </div>
         </div>

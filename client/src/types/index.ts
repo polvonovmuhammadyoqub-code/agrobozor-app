@@ -26,6 +26,11 @@ export interface User {
   full_name: string;
   role: Role;
   region: string;
+  district?: string | null;
+  telegram_chat_id?: string | null;
+  language?: string;
+  is_online?: boolean;
+  vehicle_type?: string | null;
   tin_or_passport: string;
   farm_or_company_name?: string | null;
   kyc_status: KycStatus;
@@ -86,6 +91,7 @@ export interface Order {
   status: OrderStatus;
   delivery_address: string;
   delivery_schedule?: string | null;
+  delivery_district?: string | null;
   delivery_pin?: string | null;
   delivery_pin_attempts?: number;
   created_at: string;
@@ -215,6 +221,7 @@ export interface InvoiceData {
     name: string;
     category: string;
     quantity_kg: number;
+    unit?: string;
     price_per_kg: number;
     total_price: number;
   }>;

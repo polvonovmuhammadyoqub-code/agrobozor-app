@@ -3,7 +3,8 @@ import prisma from '../db.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
 import { DELIVERY_FEE, COURIER_PAYOUT, LOGISTICS_MARGIN, COMMISSION_RATE, PAYMENT_TIMEOUT_MIN, INVOICE_TIMEOUT_HOURS, DISPUTE_WINDOW_HOURS, } from '../config.js';
 import { settleOrder } from '../services/settlement.js';
-import { cleanText, maskId, positiveNumber } from '../utils/validate.js';
+import { cleanText, maskId, positiveNumber, formatUnitName } from '../utils/validate.js';
+import { isValidDistrict } from '../constants/districts.js';
 import { payOrder, farmerConfirm, farmerReject, courierPickup, courierDeliver, buyerComplete, OrderActionError, } from '../services/orderActions.js';
 import { supabase } from '../services/supabase.js';
 const router = Router();
@@ -184,11 +185,19 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
             return res.status(400).json({ error: "Sotuvchi hali tekshiruvdan o'tmagan" });
         }
         if (qty < product.min_order_kg) {
-            return res.status(400).json({ error: `Minimal buyurtma miqdori: ${product.min_order_kg} kg` });
+            return res.status(400).json({
+                error: `Minimal buyurtma miqdori: ${product.min_order_kg} ${formatUnitName(product.unit)}`,
+            });
         }
         const product_total_amount = Math.round(qty * product.price_per_kg);
         const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
         const farmer_payout = product_total_amount - platform_commission;
+        let delivery_district = null;
+        if (req.body?.delivery_district) {
+            const dist = cleanText(req.body.delivery_district, 120);
+            if (isValidDistrict(dist))
+                delivery_district = dist;
+        }
         const order = await prisma.$transaction(async (tx) => {
             // Atomik band qilish: poyga holatida (oversell) ikki kishiga bir xil qoldiq sotilmaydi
             const reserved = await tx.product.updateMany({
@@ -213,6 +222,7 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req, res) =
                     payment_method,
                     status: 'PENDING_PAYMENT',
                     delivery_address,
+                    delivery_district,
                     delivery_schedule: delivery_schedule ? cleanText(delivery_schedule, 200) : null,
                 },
             });
@@ -340,6 +350,7 @@ router.get('/:id/invoice', authenticateToken, async (req, res) => {
                     name: order.product.title,
                     category: order.product.category,
                     quantity_kg: order.quantity_kg,
+                    unit: order.product.unit || 'KG',
                     price_per_kg: order.product.price_per_kg,
                     total_price: order.product_total_amount,
                 },

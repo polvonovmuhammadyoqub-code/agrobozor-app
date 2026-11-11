@@ -91,6 +91,7 @@ export const api = {
     },
     getById: (id: string) => request<Product>(`/products/${id}`),
     getMine: () => request<Product[]>('/products/mine/list'),
+    getLast: () => request<Product | null>('/products/farmer/last'),
     create: (body: Partial<Product>) =>
       request<Product>('/products', {
         method: 'POST',
@@ -122,6 +123,7 @@ export const api = {
       payment_method: string;
       delivery_address: string;
       delivery_schedule?: string;
+      delivery_district?: string;
     }) =>
       request<Order>('/orders', {
         method: 'POST',

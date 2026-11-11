@@ -44,3 +44,27 @@ export function maskId(v: string | null | undefined): string {
 
 export const CATEGORIES = ['MEVALAR', 'SABZAVOTLAR', 'POLIZ', 'SUT_GOSHT', 'DON'];
 export const PUBLIC_ROLES = ['FARMER', 'BUYER_B2C', 'BUYER_B2B', 'COURIER'];
+
+export const ALLOWED_UNITS = ['KG', 'DONA', 'LITR', 'BANKA', 'QUTI'] as const;
+export type ProductUnit = typeof ALLOWED_UNITS[number];
+
+export const UNIT_LABELS: Record<string, string> = {
+  KG: 'kg',
+  DONA: 'dona',
+  LITR: 'litr',
+  BANKA: 'banka',
+  QUTI: 'quti',
+};
+
+export function formatUnitName(unit?: string | null): string {
+  if (!unit) return 'kg';
+  return UNIT_LABELS[unit.toUpperCase()] || 'kg';
+}
+
+export const ALLOWED_PICKUP_TIME_SLOTS = [
+  '06:00–09:00',
+  '09:00–12:00',
+  '12:00–16:00',
+  '16:00–20:00',
+] as const;
+
