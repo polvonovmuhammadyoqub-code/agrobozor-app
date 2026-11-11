@@ -15,6 +15,7 @@ import { ReviewModal } from './components/ReviewModal';
 import { AddProductModal } from './components/AddProductModal';
 import { WalletModal } from './components/WalletModal';
 import { CartDrawer } from './components/CartDrawer';
+import { CartCheckoutModal } from './components/CartCheckoutModal';
 import { LoginModal } from './components/LoginModal';
 import { RegisterModal } from './components/RegisterModal';
 import { Product, Order } from './types';
@@ -33,6 +34,7 @@ const AppContent: React.FC = () => {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCartCheckoutOpen, setIsCartCheckoutOpen] = useState(false);
 
   // Auth modal holatlari
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -167,11 +169,14 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Global Modallar */}
-      <OrderModal
-        product={orderModalProduct}
-        onClose={() => setOrderModalProduct(null)}
-        onSuccess={handleOrderSuccess}
-      />
+      {orderModalProduct && (
+        <OrderModal
+          key={orderModalProduct.id}
+          product={orderModalProduct}
+          onClose={() => setOrderModalProduct(null)}
+          onSuccess={handleOrderSuccess}
+        />
+      )}
 
       <DisputeModal
         order={disputeOrder}
@@ -208,6 +213,14 @@ const AppContent: React.FC = () => {
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
+        onCheckoutAll={() => {
+          if (!user) {
+            setIsCartOpen(false);
+            setIsLoginOpen(true);
+            return;
+          }
+          setIsCartCheckoutOpen(true);
+        }}
         onCheckoutProduct={(product) => {
           if (!user) {
             setIsCartOpen(false);
@@ -216,6 +229,12 @@ const AppContent: React.FC = () => {
           }
           setOrderModalProduct(product);
         }}
+      />
+
+      <CartCheckoutModal
+        isOpen={isCartCheckoutOpen}
+        onClose={() => setIsCartCheckoutOpen(false)}
+        onSuccess={() => setCurrentTab('orders')}
       />
 
       {/* Auth Modallar */}

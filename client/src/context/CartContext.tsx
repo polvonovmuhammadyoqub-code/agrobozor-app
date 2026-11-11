@@ -59,7 +59,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (acc, item) => acc + item.quantity_kg * item.product.price_per_kg,
     0
   );
-  const deliveryFee = items.length > 0 ? 15000 : 0;
+  // Fermerlar bo'yicha ajratilgan yetkazib berish haqi: har bir alohida fermer uchun 15 000 so'm
+  const distinctFarmersCount = new Set(items.map((item) => item.product.farmer_id)).size;
+  const deliveryFee = distinctFarmersCount * 15000;
   const grandTotal = subtotal + deliveryFee;
 
   return (

@@ -67,6 +67,8 @@ export interface Order {
   farmer_id: string;
   courier_id?: string | null;
   product_id: string;
+  product_title?: string | null;
+  unit_price_per_kg?: number | null;
   quantity_kg: number;
   product_total_amount: number;
   delivery_fee: number;
@@ -181,7 +183,27 @@ export interface AdminStats {
   openDisputesCount: number;
   activeProductsCount: number;
   totalOrdersCount: number;
+  pendingWithdrawalsCount?: number;
+  pendingB2bPaymentsCount?: number;
   statusCounts: Record<string, number>;
+}
+
+export interface WithdrawalRequest {
+  id: string;
+  user_id: string;
+  amount: number;
+  card_number: string;
+  status: 'PENDING' | 'PAID' | 'REJECTED';
+  admin_comment?: string | null;
+  created_at: string;
+  processed_at?: string | null;
+  user?: {
+    id: string;
+    full_name: string;
+    phone: string;
+    role: string;
+    wallet_available: number;
+  };
 }
 
 export interface InvoiceData {

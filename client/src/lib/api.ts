@@ -8,6 +8,7 @@ import {
   AdminStats,
   InvoiceData,
   Transaction,
+  WithdrawalRequest,
 } from '../types';
 
 const envApiUrl = (import.meta as any).env?.VITE_API_URL || '';
@@ -127,6 +128,20 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    checkout: (body: {
+      items: Array<{ product_id: string; quantity_kg: number }>;
+      delivery_address: string;
+      delivery_schedule?: string;
+      payment_method: string;
+    }) =>
+      request<{
+        orders: Order[];
+        total_orders_count: number;
+        grand_total: number;
+      }>('/orders/checkout', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     pay: (id: string, payment_method?: string) =>
       request<{ order: Order; pending_invoice?: boolean; message?: string; reference?: string }>(`/orders/${id}/pay`, {
         method: 'POST',
@@ -174,6 +189,23 @@ export const api = {
   admin: {
     getStats: () => request<AdminStats>('/admin/stats'),
     getFarmers: () => request<User[]>('/admin/farmers'),
+    getCouriers: () => request<User[]>('/admin/couriers'),
+    getB2bOrders: () => request<Order[]>('/admin/b2b-orders'),
+    confirmPayment: (orderId: string) =>
+      request<{ message: string }>(`/admin/orders/${orderId}/confirm-payment`, {
+        method: 'POST',
+      }),
+    getWithdrawals: () => request<WithdrawalRequest[]>('/admin/withdrawals'),
+    approveWithdrawal: (id: string, comment?: string) =>
+      request<{ message: string; withdrawal: WithdrawalRequest }>(`/admin/withdrawals/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ comment }),
+      }),
+    rejectWithdrawal: (id: string, reason?: string) =>
+      request<{ message: string; withdrawal: WithdrawalRequest }>(`/admin/withdrawals/${id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
     updateKyc: (userId: string, status: string) =>
       request<{ message: string; user: User }>(`/admin/kyc/${userId}`, {
         method: 'PATCH',
@@ -193,9 +225,10 @@ export const api = {
         transactions: Transaction[];
       }>('/users/wallet-history'),
     withdraw: (amount: number, card_or_account?: string) =>
-      request<{ message: string; wallet_available: number }>('/users/withdraw', {
+      request<{ message: string; wallet_available: number; withdrawal?: WithdrawalRequest }>('/users/withdraw', {
         method: 'POST',
         body: JSON.stringify({ amount, card_or_account }),
       }),
+    getWithdrawals: () => request<WithdrawalRequest[]>('/users/withdrawals'),
   },
 };

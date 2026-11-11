@@ -102,6 +102,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         return { label: 'Qaytarilgan Mablag\'', color: 'bg-rose-100 text-rose-800' };
       case 'WITHDRAWAL_REQUEST':
         return { label: 'Yechish so\'rovi', color: 'bg-orange-100 text-orange-800' };
+      case 'WITHDRAWAL_REFUND':
+        return { label: 'Yechish rad etildi (Qaytarildi)', color: 'bg-teal-100 text-teal-800' };
       case 'PREMIUM_SUBSCRIPTION':
         return { label: 'Premium Obuna', color: 'bg-yellow-100 text-yellow-800' };
       default:

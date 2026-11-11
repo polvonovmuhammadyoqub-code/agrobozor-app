@@ -47,8 +47,8 @@ function sanitize(order: any, u: AuthUser) {
   return o;
 }
 
-/** Muddati o'tgan to'lanmagan buyurtmalarni bekor qilib, ombor qoldig'ini qaytaradi (cron o'rniga lazy). */
-async function releaseExpiredOrders() {
+/** Muddati o'tgan to'lanmagan buyurtmalarni bekor qilib, ombor qoldig'ini qaytaradi */
+export async function releaseExpiredOrders() {
   try {
     const now = Date.now();
     const stale = await prisma.order.findMany({
@@ -75,7 +75,7 @@ async function releaseExpiredOrders() {
 }
 
 /** Yetkazilganiga 24 soat o'tib, nizo ochilmagan buyurtmalarni avtomatik yakunlaydi. */
-async function autoCompleteDelivered() {
+export async function autoCompleteDelivered() {
   try {
     const cutoff = new Date(Date.now() - DISPUTE_WINDOW_HOURS * 3600000);
     const due = await prisma.order.findMany({ where: { status: 'DELIVERED', delivered_at: { lt: cutoff } }, take: 50 });
@@ -171,6 +171,8 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
           buyer_id: buyerId,
           farmer_id: product.farmer_id,
           product_id: product.id,
+          product_title: product.title,
+          unit_price_per_kg: product.price_per_kg,
           quantity_kg: qty,
           product_total_amount,
           delivery_fee: DELIVERY_FEE,
@@ -195,6 +197,142 @@ router.post('/', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRe
   }
 });
 
+// 3b. Savatdagi barcha mahsulotlarni rasmiylashtirish (Multi-item cart checkout)
+router.post('/checkout', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRequest, res: Response) => {
+  try {
+    const buyerId = req.user!.id;
+    const { items, delivery_address, delivery_schedule, payment_method } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Savatda mahsulotlar mavjud emas' });
+    }
+
+    const cleanAddress = cleanText(delivery_address, 300);
+    if (cleanAddress.length < 5) {
+      return res.status(400).json({ error: "Yetkazib berish manzilini to'liq kiriting" });
+    }
+
+    const payMethod = METHODS.includes(payment_method) ? payment_method : 'CLICK';
+    if (payMethod === 'INVOICE_B2B' && req.user!.role !== 'BUYER_B2B') {
+      return res.status(400).json({ error: 'Hisob-faktura orqali to‘lov faqat biznes hisoblar uchun' });
+    }
+
+    // Har bir mahsulotni tekshirish
+    const itemRequests = items.map((it: any) => ({
+      product_id: String(it.product_id),
+      quantity_kg: positiveNumber(it.quantity_kg),
+    }));
+
+    if (itemRequests.some((it: any) => !it.product_id || !it.quantity_kg)) {
+      return res.status(400).json({ error: "Mahsulotlar va ularning miqdorlari to'g'ri kiritilishi shart" });
+    }
+
+    const productIds = itemRequests.map((it: any) => it.product_id);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      include: { farmer: true },
+    });
+
+    const productMap = new Map(products.map((p) => [p.id, p]));
+
+    for (const item of itemRequests) {
+      const prod = productMap.get(item.product_id);
+      if (!prod || !prod.is_active) {
+        return res.status(400).json({ error: `Mahsulot topilmadi yoki sotuvda faol emas: ${prod?.title || item.product_id}` });
+      }
+      if (prod.farmer_id === buyerId) {
+        return res.status(400).json({ error: `O'zingizning mahsulotingizni sotib ola olmaysiz: ${prod.title}` });
+      }
+      if (prod.farmer.kyc_status !== 'APPROVED') {
+        return res.status(400).json({ error: `Sotuvchi hali tekshiruvdan o'tmagan: ${prod.farmer.full_name}` });
+      }
+      if (item.quantity_kg < prod.min_order_kg) {
+        return res.status(400).json({ error: `${prod.title} uchun minimal buyurtma: ${prod.min_order_kg} kg` });
+      }
+      if (item.quantity_kg > prod.available_quantity_kg) {
+        return res.status(400).json({ error: `${prod.title} omborda yetarli emas. Qoldiq: ${prod.available_quantity_kg} kg` });
+      }
+    }
+
+    // Fermerlar bo'yicha guruhlash (har bir alohida fermer yetkazib berish bo'yicha alohida hisoblanadi)
+    const farmerOrdersMap = new Map<string, typeof itemRequests>();
+    for (const item of itemRequests) {
+      const prod = productMap.get(item.product_id)!;
+      const list = farmerOrdersMap.get(prod.farmer_id) || [];
+      list.push(item);
+      farmerOrdersMap.set(prod.farmer_id, list);
+    }
+
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const resultList = [];
+
+      for (const [farmerId, farmerItems] of farmerOrdersMap.entries()) {
+        let isFirstForFarmer = true;
+
+        for (const item of farmerItems) {
+          const prod = productMap.get(item.product_id)!;
+
+          // Ombor qoldig'ini atomik band qilish
+          const reserved = await tx.product.updateMany({
+            where: { id: prod.id, is_active: true, available_quantity_kg: { gte: item.quantity_kg } },
+            data: { available_quantity_kg: { decrement: item.quantity_kg } },
+          });
+          if (reserved.count !== 1) {
+            throw new Error(`STOCK_${prod.title}`);
+          }
+
+          const product_total_amount = Math.round(item.quantity_kg * prod.price_per_kg);
+          const platform_commission = Math.round(product_total_amount * COMMISSION_RATE);
+          const farmer_payout = product_total_amount - platform_commission;
+
+          // Har bir fermer partiyasi uchun bir marta yetkazib berish haqi olinadi
+          const delivery_fee = isFirstForFarmer ? DELIVERY_FEE : 0;
+          const courier_payout = isFirstForFarmer ? COURIER_PAYOUT : 0;
+          const platform_logistics_margin = isFirstForFarmer ? LOGISTICS_MARGIN : 0;
+          isFirstForFarmer = false;
+
+          const order = await tx.order.create({
+            data: {
+              buyer_id: buyerId,
+              farmer_id: farmerId,
+              product_id: prod.id,
+              product_title: prod.title,
+              unit_price_per_kg: prod.price_per_kg,
+              quantity_kg: item.quantity_kg,
+              product_total_amount,
+              delivery_fee,
+              total_paid: product_total_amount + delivery_fee,
+              platform_commission,
+              farmer_payout,
+              courier_payout,
+              platform_logistics_margin,
+              payment_method: payMethod,
+              status: 'PENDING_PAYMENT',
+              delivery_address: cleanAddress,
+              delivery_schedule: delivery_schedule ? cleanText(delivery_schedule, 200) : null,
+            },
+          });
+          resultList.push(order);
+        }
+      }
+
+      return resultList;
+    });
+
+    return res.status(201).json({
+      orders: createdOrders,
+      total_orders_count: createdOrders.length,
+      grand_total: createdOrders.reduce((sum, o) => sum + o.total_paid, 0),
+    });
+  } catch (err: any) {
+    if (err?.message?.startsWith('STOCK_')) {
+      return res.status(400).json({ error: `Omborda mahsulot yetarli emas: ${err.message.replace('STOCK_', '')}` });
+    }
+    console.error('Checkout error:', err);
+    return res.status(500).json({ error: 'Savat buyurtmalarini rasmiylashtirishda xatolik yuz berdi' });
+  }
+});
+
 // 4. To'lov: muvaffaqiyatli bo'lsa pul ESCROW'ga tushadi (PAID_IN_ESCROW)
 router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req: AuthRequest, res: Response) => {
   try {
@@ -202,6 +340,23 @@ router.post('/:id/pay', authenticateToken, requireRole(BUYER_ROLES), async (req:
     if (!order || order.buyer_id !== req.user!.id) return res.status(404).json({ error: 'Buyurtma topilmadi' });
     if (order.status !== 'PENDING_PAYMENT') {
       return res.status(400).json({ error: "Bu buyurtma to'lov kutmayapti" });
+    }
+
+    // Muddat tekshiruvi: 30 daqiqa (oddiy to'lov) yoki 72 soat (B2B hisob-faktura)
+    const orderAgeMs = Date.now() - new Date(order.created_at).getTime();
+    const isExpired =
+      order.payment_method === 'INVOICE_B2B'
+        ? orderAgeMs > INVOICE_TIMEOUT_HOURS * 3600000
+        : orderAgeMs > PAYMENT_TIMEOUT_MIN * 60000;
+
+    if (isExpired) {
+      await prisma.$transaction(async (tx) => {
+        const r = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING_PAYMENT' }, data: { status: 'CANCELLED' } });
+        if (r.count === 1) {
+          await tx.product.update({ where: { id: order.product_id }, data: { available_quantity_kg: { increment: order.quantity_kg } } });
+        }
+      });
+      return res.status(400).json({ error: "Buyurtmani to'lash muddati tugagan (rezerv bekor qilindi). Iltimos, qaytadan buyurtma bering." });
     }
 
     // B2B hisob-faktura: admin bank o'tkazmasini tasdiqlagach escrow'ga tushadi
@@ -355,10 +510,14 @@ router.get('/:id/invoice', authenticateToken, async (req: AuthRequest, res: Resp
       },
       items: [
         {
-          name: order.product.title,
+          name: (order as any).product_title || order.product.title,
           category: order.product.category,
           quantity_kg: order.quantity_kg,
-          price_per_kg: order.product.price_per_kg,
+          price_per_kg:
+            (order as any).unit_price_per_kg ??
+            (order.quantity_kg > 0
+              ? Math.round(order.product_total_amount / order.quantity_kg)
+              : order.product.price_per_kg),
           total_price: order.product_total_amount,
         },
       ],

@@ -5,12 +5,14 @@ import { X, Trash2, ShoppingBag, ShieldCheck, ArrowRight } from 'lucide-react';
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onCheckoutProduct: (product: any) => void;
+  onCheckoutAll: () => void;
+  onCheckoutProduct?: (product: any) => void;
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({
   isOpen,
   onClose,
+  onCheckoutAll,
   onCheckoutProduct,
 }) => {
   const { items, removeFromCart, updateQuantity, subtotal, deliveryFee, grandTotal } =
@@ -136,8 +138,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <button
               onClick={() => {
-                onCheckoutProduct(items[0].product);
                 onClose();
+                onCheckoutAll();
               }}
               className="w-full bg-agro-green hover:bg-agro-lightGreen text-white font-extrabold py-3 rounded-2xl flex items-center justify-center space-x-2 shadow-md shadow-emerald-900/15"
             >

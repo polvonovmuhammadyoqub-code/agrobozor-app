@@ -26,17 +26,29 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
     const totalGmv = paid._sum.total_paid || 0;
     const aov = paid._count > 0 ? Math.round(totalGmv / paid._count) : 0;
 
-    const [farmersCount, buyersCount, couriersCount, pendingKycCount, openDisputesCount, activeProductsCount, totalOrdersCount, grouped] =
-      await Promise.all([
-        prisma.user.count({ where: { role: 'FARMER' } }),
-        prisma.user.count({ where: { role: { in: ['BUYER_B2C', 'BUYER_B2B'] } } }),
-        prisma.user.count({ where: { role: 'COURIER' } }),
-        prisma.user.count({ where: { role: { in: ['FARMER', 'COURIER'] }, kyc_status: 'PENDING' } }),
-        prisma.dispute.count({ where: { status: 'OPEN' } }),
-        prisma.product.count({ where: { is_active: true } }),
-        prisma.order.count(),
-        prisma.order.groupBy({ by: ['status'], _count: true }),
-      ]);
+    const [
+      farmersCount,
+      buyersCount,
+      couriersCount,
+      pendingKycCount,
+      openDisputesCount,
+      activeProductsCount,
+      totalOrdersCount,
+      pendingWithdrawalsCount,
+      pendingB2bPaymentsCount,
+      grouped,
+    ] = await Promise.all([
+      prisma.user.count({ where: { role: 'FARMER' } }),
+      prisma.user.count({ where: { role: { in: ['BUYER_B2C', 'BUYER_B2B'] } } }),
+      prisma.user.count({ where: { role: 'COURIER' } }),
+      prisma.user.count({ where: { role: { in: ['FARMER', 'COURIER'] }, kyc_status: 'PENDING' } }),
+      prisma.dispute.count({ where: { status: 'OPEN' } }),
+      prisma.product.count({ where: { is_active: true } }),
+      prisma.order.count(),
+      prisma.withdrawalRequest.count({ where: { status: 'PENDING' } }),
+      prisma.order.count({ where: { payment_method: 'INVOICE_B2B', status: 'PENDING_PAYMENT' } }),
+      prisma.order.groupBy({ by: ['status'], _count: true }),
+    ]);
 
     const statusCounts: Record<string, number> = {};
     for (const g of grouped) statusCounts[g.status] = g._count;
@@ -52,6 +64,8 @@ router.get('/stats', async (_req: AuthRequest, res: Response) => {
       openDisputesCount,
       activeProductsCount,
       totalOrdersCount,
+      pendingWithdrawalsCount,
+      pendingB2bPaymentsCount,
       statusCounts,
     });
   } catch (err) {
@@ -108,7 +122,172 @@ router.get('/farmers', async (_req: AuthRequest, res: Response) => {
   }
 });
 
-// 3. KYC holatini o'zgartirish (Tasdiqlash yoki Rad etish)
+// 2b. KYC navbatidagi va barcha kuryerlar ro'yxati (Kuryer KYC boshqaruvi)
+router.get('/couriers', async (_req: AuthRequest, res: Response) => {
+  try {
+    const couriers = await prisma.user.findMany({
+      where: { role: 'COURIER' },
+      select: {
+        id: true,
+        full_name: true,
+        phone: true,
+        region: true,
+        tin_or_passport: true,
+        kyc_status: true,
+        rating: true,
+        wallet_available: true,
+        created_at: true,
+        _count: {
+          select: { courier_orders: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return res.json(couriers);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Kuryerlarni yuklashda xatolik' });
+  }
+});
+
+// 2c. B2B hisob-faktura to'lovini kutayotgan yoki barcha B2B buyurtmalar ro'yxati
+router.get('/b2b-orders', async (_req: AuthRequest, res: Response) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { payment_method: 'INVOICE_B2B' },
+      include: {
+        buyer: {
+          select: {
+            id: true,
+            full_name: true,
+            phone: true,
+            region: true,
+            farm_or_company_name: true,
+            tin_or_passport: true,
+          },
+        },
+        farmer: {
+          select: {
+            id: true,
+            full_name: true,
+            farm_or_company_name: true,
+            phone: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            title: true,
+            price_per_kg: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+
+    return res.json(orders);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'B2B buyurtmalarni yuklashda xatolik' });
+  }
+});
+
+// 2d. Pul yechish so'rovlari ro'yxati
+router.get('/withdrawals', async (_req: AuthRequest, res: Response) => {
+  try {
+    const requests = await prisma.withdrawalRequest.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            full_name: true,
+            phone: true,
+            role: true,
+            wallet_available: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+
+    return res.json(requests);
+  } catch (err: any) {
+    return res.status(500).json({ error: "Pul yechish so'rovlarini yuklashda xatolik" });
+  }
+});
+
+// 2e. Pul yechish so'rovini tasdiqlash (Admin kartaga o'tkazgach "PAID" qiladi)
+router.post('/withdrawals/:id/approve', async (req: AuthRequest, res: Response) => {
+  try {
+    const withdrawal = await prisma.withdrawalRequest.findUnique({ where: { id: req.params.id } });
+    if (!withdrawal) return res.status(404).json({ error: "So'rov topilmadi" });
+    if (withdrawal.status !== 'PENDING') {
+      return res.status(400).json({ error: `Bu so'rov allaqachon ${withdrawal.status} holatida` });
+    }
+
+    const updated = await prisma.withdrawalRequest.update({
+      where: { id: withdrawal.id },
+      data: {
+        status: 'PAID',
+        processed_at: new Date(),
+        admin_comment: req.body?.comment || "Admin tomonidan to'lov muvaffaqiyatli o'tkazildi",
+      },
+    });
+
+    return res.json({ message: "Pul o'tkazmasi tasdiqlandi", withdrawal: updated });
+  } catch {
+    return res.status(500).json({ error: 'Tasdiqlashda xatolik' });
+  }
+});
+
+// 2f. Pul yechish so'rovini rad etish va balansni qaytarish
+router.post('/withdrawals/:id/reject', async (req: AuthRequest, res: Response) => {
+  try {
+    const withdrawal = await prisma.withdrawalRequest.findUnique({ where: { id: req.params.id } });
+    if (!withdrawal) return res.status(404).json({ error: "So'rov topilmadi" });
+    if (withdrawal.status !== 'PENDING') {
+      return res.status(400).json({ error: `Bu so'rov allaqachon ${withdrawal.status} holatida` });
+    }
+
+    const reason = req.body?.reason || 'Karta rekvizitlari noto‘g‘ri yoki bank tomonidan rad etildi';
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. So'rovni REJECTED qilish
+      const updatedReq = await tx.withdrawalRequest.update({
+        where: { id: withdrawal.id },
+        data: {
+          status: 'REJECTED',
+          processed_at: new Date(),
+          admin_comment: reason,
+        },
+      });
+
+      // 2. Balansni qaytarish
+      await tx.user.update({
+        where: { id: withdrawal.user_id },
+        data: { wallet_available: { increment: withdrawal.amount } },
+      });
+
+      // 3. Qaytarilganlik tranzaksiyasini yozish
+      await tx.transaction.create({
+        data: {
+          user_id: withdrawal.user_id,
+          amount: withdrawal.amount,
+          type: 'WITHDRAWAL_REFUND',
+        },
+      });
+
+      return updatedReq;
+    });
+
+    return res.json({ message: "So'rov rad etildi va mablag' foydalanuvchi balansiga qaytarildi", withdrawal: result });
+  } catch {
+    return res.status(500).json({ error: 'Rad etishda xatolik' });
+  }
+});
+
+// 3. KYC holatini o'zgartirish (Fermer yoki Kuryerni Tasdiqlash yoki Rad etish)
 router.patch('/kyc/:userId', async (req: AuthRequest, res: Response) => {
   try {
     const { userId } = req.params;
@@ -135,7 +314,7 @@ router.patch('/kyc/:userId', async (req: AuthRequest, res: Response) => {
     });
 
     return res.json({
-      message: `Fermer KYC statusi muvaffaqiyatli o'zgartirildi: ${status}`,
+      message: `${target.role} KYC statusi muvaffaqiyatli o'zgartirildi: ${status}`,
       user: updatedUser,
     });
   } catch (err: any) {

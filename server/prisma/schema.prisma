@@ -32,6 +32,7 @@ model User {
   farmer_orders       Order[]        @relation("FarmerOrders")
   courier_orders      Order[]        @relation("CourierOrders")
   transactions        Transaction[]
+  withdrawals         WithdrawalRequest[]
   disputes            Dispute[]
   reviews_given       Review[]       @relation("Reviewer")
   reviews_received    Review[]       @relation("ReviewTarget")
@@ -64,6 +65,8 @@ model Order {
   farmer_id                 String
   courier_id                String?
   product_id                String
+  product_title             String?
+  unit_price_per_kg         Int?
   quantity_kg               Float
   product_total_amount      Int
   delivery_fee              Int         @default(15000)
@@ -142,4 +145,18 @@ model EmailVerification {
   created_at DateTime @default(now())
 
   @@index([email])
+}
+
+model WithdrawalRequest {
+  id             String    @id @default(uuid())
+  user_id        String
+  amount         Int
+  card_number    String
+  status         String    @default("PENDING") // 'PENDING', 'PAID', 'REJECTED'
+  admin_comment  String?
+  created_at     DateTime  @default(now())
+  processed_at   DateTime?
+
+  // Relations
+  user           User      @relation(fields: [user_id], references: [id])
 }

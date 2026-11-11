@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
 import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
-import { AUTO_APPROVE_KYC } from '../config.js';
+import { AUTO_APPROVE_KYC, JWT_SECRET } from '../config.js';
 
 const router = Router();
 
@@ -182,7 +183,7 @@ router.get('/mine/list', authenticateToken, requireRole(['FARMER']), async (req:
   }
 });
 
-// 3. Yagona mahsulot detali
+// 3. Yagona mahsulot detali (xaridor manzili va buyurtma tafsilotlari ochiq chiqib ketishi oldi olingan)
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -201,13 +202,6 @@ router.get('/:id', async (req: Request, res: Response) => {
             created_at: true,
           },
         },
-        orders: {
-          take: 5,
-          where: { status: 'COMPLETED' },
-          include: {
-            reviews: true,
-          },
-        },
       },
     });
 
@@ -215,9 +209,54 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Mahsulot topilmadi' });
     }
 
-    return res.json(product);
+    // Nofaol yoki tekshirilmagan fermer mahsulotini faqat egasi yoki admin ko'ra oladi
+    if (!product.is_active || product.farmer.kyc_status !== 'APPROVED') {
+      let isAllowed = false;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const token = authHeader.split(' ')[1];
+          const decoded = jwt.verify(token, JWT_SECRET) as any;
+          if (decoded && (decoded.id === product.farmer_id || decoded.role === 'ADMIN')) {
+            isAllowed = true;
+          }
+        } catch {}
+      }
+      if (!isAllowed) {
+        return res.status(404).json({ error: 'Mahsulot topilmadi yoki faol emas' });
+      }
+    }
+
+    // Sharhlar: faqat ommaviy xavfsiz maydonlar (orders va xaridor manzillarisiz!)
+    const reviews = await prisma.review.findMany({
+      where: {
+        order: {
+          product_id: id,
+          status: 'COMPLETED',
+        },
+      },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        created_at: true,
+        reviewer: {
+          select: {
+            id: true,
+            full_name: true,
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 10,
+    });
+
+    return res.json({
+      ...product,
+      reviews,
+    });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Mahsulot ma\'lumotlarini olishda xatolik' });
+    return res.status(500).json({ error: "Mahsulot ma'lumotlarini olishda xatolik" });
   }
 });
 

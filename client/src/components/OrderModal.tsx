@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, PaymentMethod } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -37,6 +37,20 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Mahsulot o'zgarganda formani va xatolik/muvaffaqiyat holatlarini to'liq qayta o'rnatish
+  useEffect(() => {
+    if (product) {
+      setQuantity(product.min_order_kg || 1);
+      setError(null);
+      setSuccessMessage(null);
+      setLoading(false);
+      setPaymentMethod(user?.role === 'BUYER_B2B' ? 'INVOICE_B2B' : 'CLICK');
+      if (user?.region && !address) {
+        setAddress(`${user.region}, Markaziy ko'cha 1`);
+      }
+    }
+  }, [product?.id]);
 
   if (!product) return null; // hook'lardan KEYIN (React qoidasi)
 
@@ -223,16 +237,21 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
           {/* To'lov usuli tanlash */}
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-2">
-              To'lov tizimi (Escrow himoyasida):
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-gray-700">
+                To'lov tizimi:
+              </label>
+              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                Online to'lov test/demo rejimida
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
-                { id: 'CLICK', name: 'Click Up', badge: 'Online' },
-                { id: 'PAYME', name: 'Payme', badge: 'Online' },
-                { id: 'UZCARD', name: 'Uzcard', badge: 'Karta' },
-                { id: 'HUMO', name: 'Humo', badge: 'Karta' },
-                { id: 'INVOICE_B2B', name: 'B2B Invoice', badge: 'Hisob-faktura' },
+                { id: 'CLICK', name: 'Click Up', badge: 'Demo' },
+                { id: 'PAYME', name: 'Payme', badge: 'Demo' },
+                { id: 'UZCARD', name: 'Uzcard', badge: 'Demo' },
+                { id: 'HUMO', name: 'Humo', badge: 'Demo' },
+                { id: 'INVOICE_B2B', name: 'B2B Invoice', badge: 'Bank' },
               ].map((m) => (
                 <button
                   type="button"

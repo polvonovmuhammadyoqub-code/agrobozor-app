@@ -61,7 +61,7 @@ router.get('/wallet-history', authenticateToken, async (req: AuthRequest, res: R
   }
 });
 
-// Pul yechish SO'ROVI: balansdan ayriladi, admin kartaga qo'lda o'tkazadi (haqiqiy payout API ulangunga qadar)
+// Pul yechish SO'ROVI: alohida WithdrawalRequest saqlanadi, karta raqami qayd etiladi va admin tomonidan tasdiqlanadi
 router.post('/withdraw', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -72,24 +72,55 @@ router.post('/withdraw', authenticateToken, async (req: AuthRequest, res: Respon
     if (amount < 10000) return res.status(400).json({ error: "Minimal yechish summasi: 10 000 so'm" });
     if (!/^\d{16}$/.test(card)) return res.status(400).json({ error: "Karta raqami 16 xonali bo'lishi kerak" });
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Atomik: balans yetarli bo'lsagina ayiriladi (ikki marta yechib bo'lmaydi)
       const r = await tx.user.updateMany({
         where: { id: userId, wallet_available: { gte: amount } },
         data: { wallet_available: { decrement: amount } },
       });
       if (r.count !== 1) throw new Error('FUNDS');
+
+      const withdrawal = await tx.withdrawalRequest.create({
+        data: {
+          user_id: userId,
+          amount,
+          card_number: card,
+          status: 'PENDING',
+        },
+      });
+
       await tx.transaction.create({ data: { user_id: userId, amount: -amount, type: 'WITHDRAWAL_REQUEST' } });
-      return tx.user.findUnique({ where: { id: userId }, select: { wallet_available: true } });
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { wallet_available: true } });
+      return { user, withdrawal };
     });
 
     return res.json({
       message: `${amount.toLocaleString()} so'm yechish so'rovi qabul qilindi. 1–2 ish kuni ichida ${card.slice(0, 4)} **** **** ${card.slice(-4)} kartaga o'tkaziladi.`,
-      wallet_available: updated!.wallet_available,
+      wallet_available: result.user!.wallet_available,
+      withdrawal: result.withdrawal,
     });
   } catch (err: any) {
     if (err?.message === 'FUNDS') return res.status(400).json({ error: "Hisobingizda mablag' yetarli emas" });
     return res.status(500).json({ error: "Mablag' yechishda xatolik" });
+  }
+});
+
+// Foydalanuvchining pul yechish so'rovlari tarixi
+router.get('/withdrawals', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const list = await prisma.withdrawalRequest.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+      take: 50,
+    });
+    const sanitized = list.map((w) => ({
+      ...w,
+      card_number: w.card_number.length === 16 ? `${w.card_number.slice(0, 4)} **** **** ${w.card_number.slice(-4)}` : w.card_number,
+    }));
+    return res.json(sanitized);
+  } catch {
+    return res.status(500).json({ error: "Pul yechish so'rovlarini yuklashda xatolik" });
   }
 });
 
