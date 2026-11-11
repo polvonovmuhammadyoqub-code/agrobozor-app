@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Category, PriceRecommendation } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { ImageUploader } from './ImageUploader';
 import {
   X,
   Sparkles,
@@ -35,6 +36,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
   const [imageUrl, setImageUrl] = useState<string>(
     'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80'
   );
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [harvestDate, setHarvestDate] = useState<string>(
     new Date().toISOString().slice(0, 16)
   );
@@ -106,7 +108,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
         price_per_kg: parseFloat(price),
         available_quantity_kg: parseFloat(quantity),
         min_order_kg: parseFloat(minOrder) || 1,
-        image_url: imageUrl,
+        image_url: imageUrls[0] || imageUrl,
+        image_urls: imageUrls.length > 0 ? imageUrls : [imageUrl],
         harvest_date: new Date(harvestDate).toISOString(),
       });
       await refreshUser();
@@ -264,27 +267,32 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({
             </div>
           </div>
 
-          {/* Hosil uzilgan sana va Rasm */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">Hosil uzilgan vaqt:</label>
-              <input
-                type="datetime-local"
-                value={harvestDate}
-                onChange={(e) => setHarvestDate(e.target.value)}
-                className="w-full p-2 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none"
-              />
-            </div>
+          {/* Hosil uzilgan sana */}
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Hosil uzilgan vaqt:</label>
+            <input
+              type="datetime-local"
+              value={harvestDate}
+              onChange={(e) => setHarvestDate(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none"
+            />
+          </div>
 
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">Rasm havolasi (URL):</label>
-              <input
-                type="text"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                className="w-full p-2 rounded-xl border border-gray-200 focus:border-agro-green focus:outline-none truncate"
-              />
-            </div>
+          {/* Rasm yuklash (Supabase Storage orqali kamera / galereya) */}
+          <div className="pt-1">
+            <ImageUploader
+              bucket="product-images"
+              urls={imageUrls}
+              onChange={(urls) => {
+                setImageUrls(urls);
+                if (urls.length > 0) {
+                  setImageUrl(urls[0]);
+                }
+              }}
+              maxImages={5}
+              label="Mahsulot fotosuratlari"
+              helperText="Kamera orqali suratga oling yoki galereyadan 5 tagacha rasm yuklang (birinchisi asosiy muqova bo'ladi)"
+            />
           </div>
 
           {/* Tugmalar */}

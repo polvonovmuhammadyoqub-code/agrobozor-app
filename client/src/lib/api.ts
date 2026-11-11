@@ -198,4 +198,13 @@ export const api = {
         body: JSON.stringify({ amount, card_or_account }),
       }),
   },
+
+  // Uploads (Supabase Storage)
+  uploads: {
+    sign: (bucket: 'product-images' | 'private-docs', content_type: string) =>
+      request<{ signed_url: string; public_url: string; path: string; token?: string }>('/uploads/sign', {
+        method: 'POST',
+        body: JSON.stringify({ bucket, content_type }),
+      }),
+  },
 };

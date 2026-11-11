@@ -46,6 +46,13 @@ export interface Product {
   min_order_kg: number;
   harvest_date: string;
   image_url: string;
+  image_urls?: string[];
+  unit?: string;
+  pickup_district?: string | null;
+  pickup_address?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  pickup_window?: string | null;
   region: string;
   is_active: boolean;
   created_at: string;
