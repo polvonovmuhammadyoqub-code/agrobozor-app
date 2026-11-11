@@ -21,6 +21,7 @@ import {
   buyerComplete,
   OrderActionError,
 } from '../services/orderActions.js';
+import { supabase } from '../services/supabase.js';
 
 const router = Router();
 const BUYER_ROLES = ['BUYER_B2C', 'BUYER_B2B'];
@@ -53,6 +54,25 @@ function sanitize(order: any, u: AuthUser) {
     o.transactions = o.transactions.filter((t: any) => t.user_id === u.id);
   }
   return o;
+}
+
+// Nizo dalili uchun xavfsiz 300 soniyalik signed URL biriktirish
+async function attachDisputeSignedUrl(order: any, u: AuthUser) {
+  if (order.dispute && order.dispute.evidence_image_url && order.dispute.evidence_image_url.startsWith('private-docs:')) {
+    const isAllowed = u.role === 'ADMIN' || order.buyer_id === u.id || order.farmer_id === u.id;
+    if (isAllowed && supabase) {
+      try {
+        const path = order.dispute.evidence_image_url.replace(/^private-docs:/, '');
+        const { data: signed } = await supabase.storage.from('private-docs').createSignedUrl(path, 300);
+        order.dispute.evidence_signed_url = signed?.signedUrl || null;
+      } catch {
+        order.dispute.evidence_signed_url = null;
+      }
+    } else {
+      order.dispute.evidence_signed_url = null;
+    }
+  }
+  return order;
 }
 
 // OrderActionError ni HTTP javobga aylantiruvchi yordamchi
@@ -128,7 +148,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     }
 
     const orders = await prisma.order.findMany({ where, include: FULL_INCLUDE, orderBy: { created_at: 'desc' }, take: 200 });
-    return res.json(orders.map((o) => sanitize(o, user)));
+    const result = await Promise.all(
+      orders.map(async (o) => {
+        const sanitized = sanitize(o, user);
+        return attachDisputeSignedUrl(sanitized, user);
+      })
+    );
+    return res.json(result);
   } catch (err) {
     console.error('Get orders error:', err);
     return res.status(500).json({ error: 'Buyurtmalarni yuklashda xatolik' });
@@ -141,7 +167,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: FULL_INCLUDE });
     if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
     if (!isParticipant(order, req.user!)) return res.status(403).json({ error: "Bu buyurtmani ko'rishga ruxsat yo'q" });
-    return res.json(sanitize(order, req.user!));
+    const sanitized = sanitize(order, req.user!);
+    await attachDisputeSignedUrl(sanitized, req.user!);
+    return res.json(sanitized);
   } catch {
     return res.status(500).json({ error: "Buyurtma ma'lumotlarini yuklashda xatolik" });
   }

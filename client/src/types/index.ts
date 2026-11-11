@@ -122,6 +122,7 @@ export interface Dispute {
   buyer_id: string;
   reason: string;
   evidence_image_url?: string | null;
+  evidence_signed_url?: string | null;
   status: DisputeStatus;
   refund_amount?: number | null;
   admin_comment?: string | null;

@@ -364,16 +364,32 @@ export const AdminPanel: React.FC = () => {
                       </div>
 
                       {/* Dalil fotosurati */}
-                      {d.evidence_image_url && (
+                      {(d.evidence_signed_url || d.evidence_image_url) && (
                         <div>
                           <div className="text-[11px] font-bold text-gray-500 mb-1">
                             Xaridor taqdim etgan dalil fotosurati:
                           </div>
-                          <img
-                            src={d.evidence_image_url}
-                            alt="Evidence"
-                            className="w-full h-32 object-cover rounded-xl border border-gray-200 shadow-sm"
-                          />
+                          {d.evidence_signed_url ? (
+                            <a
+                              href={d.evidence_signed_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block group"
+                            >
+                              <img
+                                src={d.evidence_signed_url}
+                                alt="Dalil fotosurati"
+                                className="w-full max-w-sm h-36 object-cover rounded-xl border border-gray-200 shadow-sm group-hover:opacity-90 transition"
+                              />
+                              <span className="text-[10px] text-agro-green font-bold underline mt-1 inline-block">
+                                To'liq o'lchamda ko'rish (5 daqiqa amal qiladi)
+                              </span>
+                            </a>
+                          ) : (
+                            <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200 text-gray-600 text-[11px]">
+                              Dalil fayli: {d.evidence_image_url}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

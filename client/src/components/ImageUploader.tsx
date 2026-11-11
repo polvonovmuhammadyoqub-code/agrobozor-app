@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, Trash2, Loader2, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Camera, Upload, Trash2, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface ImageUploaderProps {
@@ -75,6 +75,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 }) => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,6 +93,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     try {
       const newUrls: string[] = [];
+      const newPreviews: Record<string, string> = {};
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -115,9 +117,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           throw new Error(`Rasm yuklashda xatolik yuz berdi (${uploadRes.status})`);
         }
 
-        newUrls.push(signRes.public_url);
+        // private-docs uchun bazaga faqat private-docs:<path> saqlanadi
+        const savedIdentifier = bucket === 'private-docs'
+          ? `private-docs:${signRes.path}`
+          : (signRes.public_url || signRes.path);
+
+        newUrls.push(savedIdentifier);
+
+        // Lokal ko'rinish (preview) uchun blob URL yaratish
+        newPreviews[savedIdentifier] = URL.createObjectURL(compressedBlob);
       }
 
+      setLocalPreviews((prev) => ({ ...prev, ...newPreviews }));
       onChange([...urls, ...newUrls]);
     } catch (err: any) {
       console.error('Image upload failed:', err);
@@ -129,6 +140,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   const handleDelete = (indexToDelete: number) => {
+    const target = urls[indexToDelete];
+    if (localPreviews[target]) {
+      URL.revokeObjectURL(localPreviews[target]);
+    }
     const updated = urls.filter((_, idx) => idx !== indexToDelete);
     onChange(updated);
   };
@@ -159,31 +174,44 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
       {/* Yuklangan rasmlar galereyasi */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-        {urls.map((url, idx) => (
-          <div
-            key={url + idx}
-            className="relative group aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm"
-          >
-            <img
-              src={url}
-              alt={`Yuklangan rasm ${idx + 1}`}
-              className="w-full h-full object-cover"
-            />
-            {idx === 0 && (
-              <span className="absolute top-1 left-1 bg-agro-green text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                Asosiy
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => handleDelete(idx)}
-              className="absolute top-1 right-1 p-1 bg-rose-600/90 hover:bg-rose-700 text-white rounded-full opacity-90 group-hover:opacity-100 transition shadow"
-              title="O'chirish"
+        {urls.map((url, idx) => {
+          const previewSrc = localPreviews[url] || (url.startsWith('http') ? url : null);
+
+          return (
+            <div
+              key={url + idx}
+              className="relative group aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm flex items-center justify-center"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ))}
+              {previewSrc ? (
+                <img
+                  src={previewSrc}
+                  alt={`Yuklangan rasm ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-2 text-center text-gray-500">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 mb-1" />
+                  <span className="text-[9px] font-bold text-gray-700">Xavfsiz dalil</span>
+                </div>
+              )}
+
+              {idx === 0 && bucket === 'product-images' && (
+                <span className="absolute top-1 left-1 bg-agro-green text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
+                  Asosiy
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleDelete(idx)}
+                className="absolute top-1 right-1 p-1 bg-rose-600/90 hover:bg-rose-700 text-white rounded-full opacity-90 group-hover:opacity-100 transition shadow"
+                title="O'chirish"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })}
 
         {/* Yuklash tugmasi (agar limitga yetmagan bo'lsa) */}
         {urls.length < maxImages && (

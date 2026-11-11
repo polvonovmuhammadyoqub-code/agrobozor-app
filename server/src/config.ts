@@ -36,18 +36,32 @@ export const DISPUTE_WINDOW_HOURS = 24; // yetkazilgandan keyin shikoyat oynasi
 export const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-/** Rasm URL'i o'z Supabase storage domenimizga tegishli ekanini tekshiradi */
-export function isSupabaseStorageUrl(url: string): boolean {
-  if (!url || typeof url !== 'string') return false;
+// Kodda belgilangan standart rasm havolalari
+export const DEFAULT_PRODUCT_IMAGES: Record<string, string> = {
+  MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
+  SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+  POLIZ: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
+  SUT_GOSHT: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
+  DON: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
+};
+
+export function isAllowedDefaultImage(url: string): boolean {
+  return Object.values(DEFAULT_PRODUCT_IMAGES).includes(url);
+}
+
+/**
+ * Rasm URL'i o'z Supabase storage domenimizga va aynan so'rov yuborayotgan fermer papkasiga tegishli ekanini tekshiradi.
+ * SUPABASE_URL bo'lmasa qat'iy false qaytaradi (dev fallback yo'q).
+ * Hostname aynan teng bo'lishi va yo'l /storage/v1/object/public/product-images/<userId>/ bilan boshlanishi shart.
+ */
+export function isSupabaseStorageUrl(url: string, userId: string): boolean {
+  if (!url || typeof url !== 'string' || !userId || !SUPABASE_URL) return false;
   try {
     const parsed = new URL(url);
-    if (SUPABASE_URL) {
-      const base = new URL(SUPABASE_URL);
-      return parsed.hostname === base.hostname && parsed.pathname.includes('/storage/v1/');
-    }
-    // Agar env da SUPABASE_URL hali kiritilmagan bo'lsa (dev/test):
-    return (parsed.hostname.endsWith('.supabase.co') || parsed.hostname.endsWith('.supabase.in')) &&
-      parsed.pathname.includes('/storage/v1/');
+    const base = new URL(SUPABASE_URL);
+    if (parsed.hostname !== base.hostname) return false;
+    const requiredPrefix = `/storage/v1/object/public/product-images/${userId}/`;
+    return parsed.pathname.startsWith(requiredPrefix);
   } catch {
     return false;
   }

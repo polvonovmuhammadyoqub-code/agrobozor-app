@@ -319,6 +319,32 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               <strong>Admin xulosasi:</strong> {order.dispute.admin_comment}
             </p>
           )}
+          {(order.dispute.evidence_signed_url || order.dispute.evidence_image_url) && (
+            <div className="pt-2">
+              <span className="font-bold text-rose-800 block mb-1">Taqdim etilgan dalil fotosurati:</span>
+              {order.dispute.evidence_signed_url ? (
+                <a
+                  href={order.dispute.evidence_signed_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block group"
+                >
+                  <img
+                    src={order.dispute.evidence_signed_url}
+                    alt="Dalil fotosurati"
+                    className="w-24 h-24 object-cover rounded-xl border border-rose-200 shadow-sm group-hover:opacity-90 transition"
+                  />
+                  <span className="text-[10px] text-agro-green underline block mt-0.5">
+                    Ochish (xavfsiz havola)
+                  </span>
+                </a>
+              ) : (
+                <span className="text-gray-500 text-[11px] font-mono">
+                  {order.dispute.evidence_image_url}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

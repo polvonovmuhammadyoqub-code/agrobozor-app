@@ -18,9 +18,6 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
   if (!order) return null;
 
   const [reason, setReason] = useState('');
-  const [evidenceUrl, setEvidenceUrl] = useState(
-    'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=800&q=80'
-  );
   const [evidenceUrls, setEvidenceUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +35,7 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
       await api.disputes.create({
         order_id: order.id,
         reason,
-        evidence_image_url: evidenceUrls[0] || evidenceUrl,
+        evidence_image_url: evidenceUrls[0] || undefined,
       });
       alert('Shikoyat qabul qilindi. Buyurtma "Nizo" holatiga o\'tkazildi va pul Escrowda to\'xtatildi. Admin tekshirib qaror qabul qiladi.');
       onSuccess();
@@ -94,13 +91,10 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
             <ImageUploader
               bucket="private-docs"
               urls={evidenceUrls}
-              onChange={(urls) => {
-                setEvidenceUrls(urls);
-                if (urls.length > 0) setEvidenceUrl(urls[0]);
-              }}
+              onChange={setEvidenceUrls}
               maxImages={3}
-              label="Dalil fotosurati"
-              helperText="Kamera orqali suratga oling yoki galereyadan tanlang (private-docs xavfsiz xotirasiga yuklanadi)"
+              label="Dalil fotosurati (ixtiyoriy)"
+              helperText="Kamera orqali suratga oling yoki galereyadan tanlang (private-docs xavfsiz xotirasiga saqlanadi)"
             />
           </div>
 

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import prisma from '../db.js';
 import { authenticateToken, AuthRequest, requireRole } from '../middleware/auth.js';
 import { CATEGORIES, cleanText, isHttpUrl, positiveInt, positiveNumber, toNumber } from '../utils/validate.js';
-import { AUTO_APPROVE_KYC, isSupabaseStorageUrl } from '../config.js';
+import { AUTO_APPROVE_KYC, isSupabaseStorageUrl, isAllowedDefaultImage, DEFAULT_PRODUCT_IMAGES } from '../config.js';
 
 const router = Router();
 
@@ -242,31 +242,28 @@ router.post('/', authenticateToken, requireRole(['FARMER']), async (req: AuthReq
     if (!quantity || quantity > 1_000_000) return res.status(400).json({ error: "Miqdor noto'g'ri (kg)" });
     if (!minOrder || minOrder > quantity) return res.status(400).json({ error: "Minimal buyurtma miqdori noto'g'ri" });
 
-    // Rasm havolalari: faqat rasmiy Supabase storage domenidan bo'lishi tekshiriladi
+    // Rasm havolalari: faqat rasmiy Supabase storage domenidan va o'z papkasidan bo'lishi tekshiriladi
     const imageUrls: string[] = Array.isArray(b.image_urls)
       ? b.image_urls.map((u: any) => String(u).trim()).filter(Boolean)
       : [];
 
     for (const u of imageUrls) {
-      if (!isHttpUrl(u) || !isSupabaseStorageUrl(u)) {
-        return res.status(400).json({ error: "Yuklangan rasm faqat rasmiy AgroBozor Supabase xotirasiga tegishli bo'lishi kerak" });
+      if (!isHttpUrl(u) || !isSupabaseStorageUrl(u, user.id)) {
+        return res.status(400).json({ error: "Yuklangan rasm faqat o'zingizning rasmiy AgroBozor Supabase xotirangizga tegishli bo'lishi kerak" });
       }
     }
 
-    if (b.image_url && !isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+    if (b.image_url) {
+      if (!isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+      if (!isSupabaseStorageUrl(b.image_url, user.id) && !isAllowedDefaultImage(b.image_url)) {
+        return res.status(400).json({ error: "Rasm havolasi faqat Supabase xotirangizdan yoki standart kutubxonadan bo'lishi kerak" });
+      }
+    }
 
     let harvest = b.harvest_date ? new Date(b.harvest_date) : new Date();
     if (isNaN(harvest.getTime()) || harvest.getTime() > Date.now() + 86400000) harvest = new Date();
 
-    const defaultImages: Record<string, string> = {
-      MEVALAR: 'https://images.unsplash.com/photo-1596363505729-4190a9506133?auto=format&fit=crop&w=800&q=80',
-      SABZAVOTLAR: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
-      POLIZ: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&w=800&q=80',
-      SUT_GOSHT: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?auto=format&fit=crop&w=800&q=80',
-      DON: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-    };
-
-    const finalImageUrl = imageUrls[0] || b.image_url || defaultImages[String(b.category)];
+    const finalImageUrl = imageUrls[0] || b.image_url || DEFAULT_PRODUCT_IMAGES[String(b.category)] || '';
 
     const product = await prisma.product.create({
       data: {
@@ -329,12 +326,13 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       if (!m) return res.status(400).json({ error: "Minimal miqdor noto'g'ri" });
       data.min_order_kg = m;
     }
+    const farmerId = existing.farmer_id;
     if (b.image_urls !== undefined) {
       if (!Array.isArray(b.image_urls)) return res.status(400).json({ error: "image_urls massiv bo'lishi kerak" });
       const urls = b.image_urls.map((u: any) => String(u).trim()).filter(Boolean);
       for (const u of urls) {
-        if (!isHttpUrl(u) || !isSupabaseStorageUrl(u)) {
-          return res.status(400).json({ error: "Yuklangan rasm faqat rasmiy AgroBozor Supabase xotirasiga tegishli bo'lishi kerak" });
+        if (!isHttpUrl(u) || !isSupabaseStorageUrl(u, farmerId)) {
+          return res.status(400).json({ error: "Yuklangan rasm faqat o'zingizning rasmiy AgroBozor Supabase xotirangizga tegishli bo'lishi kerak" });
         }
       }
       data.image_urls = urls;
@@ -344,6 +342,9 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     }
     if (b.image_url !== undefined) {
       if (!isHttpUrl(b.image_url)) return res.status(400).json({ error: "Rasm havolasi noto'g'ri" });
+      if (!isSupabaseStorageUrl(b.image_url, farmerId) && !isAllowedDefaultImage(b.image_url)) {
+        return res.status(400).json({ error: "Rasm havolasi faqat Supabase xotirangizdan yoki standart kutubxonadan bo'lishi kerak" });
+      }
       data.image_url = b.image_url;
     }
     if (b.region !== undefined) data.region = cleanText(b.region, 120);
