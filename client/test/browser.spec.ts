@@ -218,3 +218,31 @@ test('farmer combines uploaded photo, units and pickup district in a new listing
   await page.getByRole('button',{name:'Sotuvga chiqarish',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Dona qovoq',exact:true})).toBeVisible();
 });
+
+for(const [role,title] of [['BUYER_B2C','Xaridor (Shaxsiy - B2C)'],['BUYER_B2B',"Biznes Xaridor (Restoran / Do'kon - B2B)"],['FARMER','Fermer (Sotuvchi)'],['COURIER','Logist (yetkazib beruvchi)']]){
+  for(const supplied of [false,true])test(`registration ${role} ${supplied?'with':'without'} optional passport`,async({page})=>{
+    await page.setViewportSize({width:375,height:812});
+    let submitted=false;
+    await page.route('**/api/auth/register',async route=>{
+      const b=route.request().postDataJSON();expect(b.role).toBe(role);expect(b.tin_or_passport).toBe(supplied?'AA1234567':null);
+      expect(b.verification_code).toBe('123456');expect(b.password).toBe('password-123');submitted=true;
+      await route.fulfill({status:400,json:{error:'Fixture received'}});
+    });
+    await page.goto('/');await page.getByRole('button',{name:'Ro‘yxatdan o‘tish',exact:true}).click();
+    await page.getByRole('button',{name:new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'))}).click();
+    const document=page.getByLabel('Pasport yoki STIR (ixtiyoriy)');await expect(document).toBeVisible();
+    expect(await document.evaluate((el:HTMLInputElement)=>el.required)).toBe(false);
+    if(supplied)await document.fill('AA1234567');
+    await page.getByPlaceholder('Masalan: Alisher Nazarov').fill('Test User');
+    await page.getByPlaceholder('nomingiz@gmail.com').fill('registration@example.com');
+    await page.getByPlaceholder('6 xonali kod').fill('123456');
+    await page.getByPlaceholder('+998901234567').fill('+998901234567');
+    await page.locator('form select').selectOption('Chilonzor');
+    if(role==='FARMER')await page.getByPlaceholder("Masalan: Parkent Zamin Bog'lari").fill('Test farm');
+    if(role==='BUYER_B2B')await page.getByPlaceholder('Masalan: Rayhon Restorani').fill('Test business');
+    await page.getByPlaceholder('Min. 8 ta belgi').fill('password-123');
+    await page.locator('form input[type=password]').last().fill('password-123');
+    await page.getByRole('button',{name:'Hisob yaratish',exact:true}).click();
+    await expect(page.getByText('Fixture received',{exact:true})).toBeVisible();expect(submitted).toBe(true);
+  });
+}

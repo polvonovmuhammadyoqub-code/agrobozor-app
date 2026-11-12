@@ -439,7 +439,7 @@ export const AdminPanel: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 font-mono font-semibold text-gray-700">
-                        {u.tin_or_passport}
+                        {u.tin_or_passport || 'Ko‘rsatilmagan'}
                       </td>
                       <td className="py-3 text-gray-600">{u.region}</td>
                       <td className="py-3 text-gray-600">{u.phone}</td>
@@ -521,7 +521,7 @@ export const AdminPanel: React.FC = () => {
                       </td>
                       <td className="py-3">
                         <div className="font-bold text-gray-900">{order.buyer?.farm_or_company_name || order.buyer?.full_name}</div>
-                        <div className="text-[11px] text-gray-500 font-normal">STIR: {order.buyer?.tin_or_passport} | Tel: {order.buyer?.phone}</div>
+                        <div className="text-[11px] text-gray-500 font-normal">STIR: {order.buyer?.tin_or_passport || 'Ko‘rsatilmagan'} | Tel: {order.buyer?.phone}</div>
                       </td>
                       <td className="py-3 text-gray-700">
                         {order.product_title || order.product?.title} ({formatQty(order.quantity_kg, order.unit || order.product?.unit)})

@@ -31,7 +31,7 @@ export interface User {
   language?: string;
   is_online?: boolean;
   vehicle_type?: string | null;
-  tin_or_passport: string;
+  tin_or_passport: string | null;
   farm_or_company_name?: string | null;
   kyc_status: KycStatus;
   is_premium: boolean;
@@ -112,7 +112,7 @@ export interface Order {
     phone: string;
     region: string;
     farm_or_company_name?: string | null;
-    tin_or_passport: string;
+    tin_or_passport: string | null;
   };
   farmer: {
     id: string;
@@ -120,7 +120,7 @@ export interface Order {
     phone: string;
     region: string;
     farm_or_company_name?: string | null;
-    tin_or_passport: string;
+    tin_or_passport: string | null;
     rating: number;
     is_premium: boolean;
   };

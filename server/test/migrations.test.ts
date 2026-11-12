@@ -36,7 +36,11 @@ for(const source of ['empty','main','audit','phase-1'])test(`additive migration 
     cli('migrate');cli('migrate'); // Re-running deployment must be safe.
     const columns=await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='Order'`,[schema]);
     for(const name of ['unit','product_title','unit_price_per_kg','delivery_pin','pickup_address'])assert.ok(columns.rows.some(r=>r.column_name===name));
+    const nullable=await client.query(`SELECT is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name='User' AND column_name='tin_or_passport'`,[schema]);
+    assert.equal(nullable.rows[0].is_nullable,'YES');
+    await client.query(`INSERT INTO "User" (id,phone,password_hash,full_name,role,region,tin_or_passport) VALUES ('no-document','no-document','test-only','No document','BUYER_B2C','Toshkent',NULL)`);
     if(source!=='empty'){
+      assert.equal((await client.query(`SELECT tin_or_passport FROM "User" WHERE id='farmer'`)).rows[0].tin_or_passport,'test');
       assert.equal((await client.query(`SELECT wallet_available FROM "User" WHERE id='farmer'`)).rows[0].wallet_available,45678);
       const order=(await client.query(`SELECT * FROM "Order" WHERE id='order'`)).rows[0];
       assert.equal(order.total_paid,65000);assert.equal(order.quantity_kg,2.5);assert.equal(order.product_title,'Legacy listing');assert.equal(order.unit_price_per_kg,20000);
@@ -45,6 +49,6 @@ for(const source of ['empty','main','audit','phase-1'])test(`additive migration 
       if(source==='audit')assert.equal((await client.query(`SELECT body FROM "Message" WHERE id='message'`)).rows[0].body,'Keep this conversation');
       assert.equal((await client.query(`SELECT available_quantity_kg FROM "Product" WHERE id='listing'`)).rows[0].available_quantity_kg,12.5);
     }
-    assert.equal((await client.query(`SELECT COUNT(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL`)).rows[0].count,2);
+    assert.equal((await client.query(`SELECT COUNT(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL`)).rows[0].count,3);
   }finally{await client.end();}
 });

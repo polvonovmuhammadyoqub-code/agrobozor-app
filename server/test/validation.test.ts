@@ -22,3 +22,10 @@ test('commodity matching supports Uzbek suffixes without mixing processing or am
   assert.notEqual(productKind('Olma sharbati'),productKind('Olma'));
   assert.notEqual(productKind('Olma va uzum'),productKind('Olma'));
 });
+
+test('missing identity documents are displayed safely while existing values stay masked',async()=>{
+  const {maskId}=await import('../src/utils/validate.js');
+  assert.equal(maskId(null),'Ko‘rsatilmagan');assert.equal(maskId(undefined),'Ko‘rsatilmagan');
+  assert.equal(maskId(''),'Ko‘rsatilmagan');assert.equal(maskId('  '),'Ko‘rsatilmagan');
+  assert.equal(maskId('AA1234567'),'AA***4567');assert.equal(maskId('123'),'****');
+});

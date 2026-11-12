@@ -15,7 +15,8 @@
   ],
   "git": {
     "deploymentEnabled": {
-      "release/hosting-ready": false
+      "release/hosting-ready": false,
+      "fix/optional-registration-id": false
     }
   }
 }

@@ -108,7 +108,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ orderId, onClose }) 
                     Yetkazib beruvchi (Fermer):
                   </div>
                   <div className="font-bold text-gray-900 text-sm">{invoice.seller.name}</div>
-                  <div>STIR / Pasport: <strong>{invoice.seller.tin}</strong></div>
+                  <div>STIR / Pasport: <strong>{invoice.seller.tin || 'Ko‘rsatilmagan'}</strong></div>
                   <div>Manzil: {invoice.seller.address}</div>
                   <div>Tel: {invoice.seller.phone}</div>
                 </div>
@@ -118,7 +118,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ orderId, onClose }) 
                     Buyurtmachi (Mijoz):
                   </div>
                   <div className="font-bold text-gray-900 text-sm">{invoice.buyer.name}</div>
-                  <div>STIR / Pasport: <strong>{invoice.buyer.tin}</strong></div>
+                  <div>STIR / Pasport: <strong>{invoice.buyer.tin || 'Ko‘rsatilmagan'}</strong></div>
                   <div>Yetkazish manzili: {invoice.buyer.address}</div>
                   <div>Tel: {invoice.buyer.phone}</div>
                 </div>

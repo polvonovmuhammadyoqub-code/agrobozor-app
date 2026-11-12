@@ -124,7 +124,6 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
   const [tinOrPassport, setTinOrPassport] = useState('');
   // B2B uchun qo'shimcha
   const [companyName, setCompanyName] = useState('');
-  const [companyTin, setCompanyTin] = useState('');
 
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -191,14 +190,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
 
     if (selectedRole === 'FARMER') {
       if (!farmName.trim()) return "Fermer xo'jaligi nomini kiriting";
-      if (!tinOrPassport.trim()) return "STIR (INN) yoki Pasport seriyasini kiriting";
     }
     if (selectedRole === 'BUYER_B2B') {
       if (!companyName.trim()) return "Kompaniya / Restoran nomini kiriting";
-      if (!companyTin.trim()) return "STIR (INN) raqamini kiriting";
     }
-    if (selectedRole === 'COURIER') {
-      if (!tinOrPassport.trim()) return "Pasport seriyangizni kiriting";
+    if (selectedRole !== 'BUYER_B2C' && tinOrPassport.trim() && tinOrPassport.trim().length < 5) {
+      return 'STIR yoki pasport raqami kamida 5 belgidan iborat bo‘lishi kerak';
     }
 
     return null;
@@ -225,10 +222,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
         full_name: fullName.trim(),
         role: selectedRole,
         region,
-        tin_or_passport:
-          selectedRole === 'BUYER_B2B'
-            ? companyTin.trim()
-            : tinOrPassport.trim() || `AUTO-${Date.now()}`,
+        tin_or_passport: tinOrPassport.trim() || null,
       };
 
       if (selectedRole === 'FARMER') {
@@ -489,25 +483,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block font-bold text-gray-700 mb-1">
-                      STIR (INN) yoki Pasport seriyasi *
-                    </label>
-                    <div className="relative">
-                      <FileText className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        required
-                        value={tinOrPassport}
-                        onChange={(e) => setTinOrPassport(e.target.value)}
-                        placeholder="Masalan: AA1234567"
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
-                      />
-                    </div>
-                    <p className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-lg mt-1 border border-emerald-200">
-                      ✅ Ro'yxatdan o'tgach darhol o'z mahsulotlaringizni sotuvga chiqarishingiz mumkin!
-                    </p>
-                  </div>
+
                 </>
               )}
 
@@ -530,44 +506,19 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block font-bold text-gray-700 mb-1">
-                      STIR (INN) raqami *
-                    </label>
-                    <div className="relative">
-                      <FileText className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        required
-                        value={companyTin}
-                        onChange={(e) => setCompanyTin(e.target.value)}
-                        placeholder="Masalan: 308xxxxxxx"
-                        className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
-                      />
-                    </div>
-                  </div>
+
                 </>
               )}
 
-              {/* Kuryer pasporti */}
-              {selectedRole === 'COURIER' && (
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">
-                    Pasport seriyasi *
-                  </label>
-                  <div className="relative">
-                    <FileText className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      required
-                      value={tinOrPassport}
-                      onChange={(e) => setTinOrPassport(e.target.value)}
-                      placeholder="Masalan: AA1234567"
-                      className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:border-agro-green focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
+              <div>
+                <label htmlFor="registration-tin" className="block font-bold text-gray-700 mb-1">
+                  Pasport yoki STIR (ixtiyoriy)
+                </label>
+                <input id="registration-tin" type="text" maxLength={30}
+                  value={tinOrPassport} onChange={(e) => setTinOrPassport(e.target.value)}
+                  placeholder="Masalan: AA1234567"
+                  className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl" />
+              </div>
 
               {/* Parol */}
               <div className="grid grid-cols-2 gap-2">

@@ -17,7 +17,7 @@ model User {
   full_name           String
   role                String   // 'FARMER', 'BUYER_B2C', 'BUYER_B2B', 'COURIER', 'ADMIN'
   region              String   // Viloyat / tuman
-  tin_or_passport     String   // STIR yoki pasport seriyasi
+  tin_or_passport     String?  // STIR yoki pasport seriyasi
   farm_or_company_name String? // Fermer yoki kompaniya nomi
   kyc_status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
   is_premium          Boolean  @default(false)

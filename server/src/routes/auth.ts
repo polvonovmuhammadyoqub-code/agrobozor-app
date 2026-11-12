@@ -101,7 +101,7 @@ router.post('/register', async (req: Request, res: Response) => {
     if (!PUBLIC_ROLES.includes(role)) return res.status(400).json({ error: "Noto'g'ri rol tanlandi" });
 
     const tin = cleanText(b.tin_or_passport, 30);
-    if ((role === 'FARMER' || role === 'BUYER_B2B' || role === 'COURIER') && tin.length < 5) {
+    if ((role === 'FARMER' || role === 'BUYER_B2B' || role === 'COURIER') && tin && tin.length < 5) {
       return res.status(400).json({ error: 'STIR yoki pasport raqamini kiriting' });
     }
 
@@ -135,7 +135,7 @@ router.post('/register', async (req: Request, res: Response) => {
           role,
           region,
           district,
-          tin_or_passport: tin || `ID-${Date.now()}`,
+          tin_or_passport: tin || null,
           farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
           kyc_status,
         },
