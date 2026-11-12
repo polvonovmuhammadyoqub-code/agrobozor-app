@@ -30,7 +30,7 @@ try {
         full_name: 'AgroBozor Admin',
         role: 'ADMIN',
         region: 'Toshkent',
-        tin_or_passport: 'ADMIN',
+        tin_or_passport: null,
         kyc_status: 'APPROVED',
       },
     });

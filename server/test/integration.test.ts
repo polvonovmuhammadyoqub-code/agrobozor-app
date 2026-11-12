@@ -565,3 +565,51 @@ test('uploads restrict roles, size, MIME and owner URLs without contacting real 
  assert.equal((await request('/products','FARMER',{...body,image_urls:[own.replace('https:','http:')]})).status,400);
  assert.equal((await request('/products','FARMER',{...body,image_urls:[own.replace(users.FARMER.id,users.BUYER_B2C.id)]})).status,400);
 });
+
+test('all public roles register with or without an identity document; auth and KYC remain unchanged', options, async () => {
+  const { AUTO_APPROVE_KYC } = await import('../src/config.js');
+  for (const role of ['BUYER_B2C','BUYER_B2B','FARMER','COURIER']) {
+    for (const supplied of [false,true]) {
+      const email=`${randomUUID()}@example.com`;emails.push(email);
+      await prisma.emailVerification.create({data:{email,code:'123456',expires_at:new Date(Date.now()+600000)}});
+      const body:any={email,verification_code:'123456',phone:'998'+String(Math.floor(Math.random()*900000000)+100000000),password:'registration-test-123',full_name:'Registration test',region:'Toshkent',role};
+      if(supplied)body.tin_or_passport='  AA1234567  ';
+      const result=await request('/auth/register',undefined,body);
+      assert.equal(result.status,201,JSON.stringify(result.data));ids.push(result.data.user.id);
+      const saved=await prisma.user.findUniqueOrThrow({where:{id:result.data.user.id}});
+      assert.equal(saved.tin_or_passport,supplied?'AA1234567':null);
+      assert.equal(saved.kyc_status,['FARMER','COURIER'].includes(role)&&!AUTO_APPROVE_KYC?'PENDING':'APPROVED');
+      assert.equal(result.data.user.password_hash,undefined);
+      const profile=await fetch(base+'/api/auth/me',{headers:{Authorization:`Bearer ${result.data.token}`}});
+      assert.equal(profile.status,200);assert.equal((await profile.json()).tin_or_passport,saved.tin_or_passport);
+      if(role==='BUYER_B2C')assert.equal((await request('/auth/login',undefined,{email,password:body.password})).status,200);
+    }
+  }
+  for(const role of ['FARMER','BUYER_B2B','COURIER']) {
+    assert.equal((await request('/auth/register',undefined,{email:'invalid-doc@example.com',phone:'+998901234567',password:'valid-password-123',full_name:'Test user',region:'Toshkent',role,tin_or_passport:'123'})).status,400);
+  }
+});
+
+test('empty, null and whitespace documents are stored as null; verification is still required', options, async()=>{
+  for(const document of [null,'','   ']){
+    const email=`${randomUUID()}@example.com`;emails.push(email);
+    const body={email,verification_code:'123456',phone:'998'+String(Math.floor(Math.random()*900000000)+100000000),password:'registration-test-123',full_name:'Blank document test',region:'Toshkent',role:'BUYER_B2C',tin_or_passport:document};
+    await prisma.emailVerification.create({data:{email,code:'123456',expires_at:new Date(Date.now()+600000)}});
+    const result=await request('/auth/register',undefined,body);assert.equal(result.status,201);ids.push(result.data.user.id);
+    assert.equal(result.data.user.tin_or_passport,null);
+  }
+});
+
+test('nullable profiles, admin KYC lists and invoices render safely; invalid email code still blocks registration',options,async()=>{
+  const invalid=await request('/auth/register',undefined,{email:'no-code@example.com',verification_code:'000000',phone:'+998901234567',password:'registration-test-123',full_name:'Test user',region:'Toshkent',role:'FARMER'});
+  assert.equal(invalid.status,400);assert.match(invalid.data.error,/Email tasdiqlash/);
+  await prisma.user.update({where:{id:users.FARMER.id},data:{tin_or_passport:null}});
+  try{
+    assert.equal((await request('/auth/me','FARMER',undefined,'GET')).data.tin_or_passport,null);
+    const farmers=await request('/admin/farmers','ADMIN',undefined,'GET');
+    assert.equal(farmers.data.find((u:any)=>u.id===users.FARMER.id).tin_or_passport,null);
+    const order=await createOrder();assert.equal(order.status,201);
+    const invoice=await request(`/orders/${order.data.id}/invoice`,'BUYER_B2C',undefined,'GET');
+    assert.equal(invoice.status,200);assert.equal(invoice.data.seller.tin,'Ko‘rsatilmagan');
+  }finally{await prisma.user.update({where:{id:users.FARMER.id},data:{tin_or_passport:'TEST'}});}
+});

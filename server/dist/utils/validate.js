@@ -37,8 +37,8 @@ export function normalizePhone(v) {
 }
 // Pasport/STIR ni maskalaydi: AA1234567 -> AA***4567
 export function maskId(v) {
-    if (!v)
-        return '';
+    if (!v?.trim())
+        return 'Ko‘rsatilmagan';
     if (v.length <= 4)
         return '****';
     return v.slice(0, 2) + '***' + v.slice(-4);
