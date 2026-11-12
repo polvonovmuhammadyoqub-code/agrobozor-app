@@ -1,7 +1,7 @@
 export type Role = 'FARMER' | 'BUYER_B2C' | 'BUYER_B2B' | 'COURIER' | 'ADMIN';
 export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type Category = 'MEVALAR' | 'SABZAVOTLAR' | 'POLIZ' | 'SUT_GOSHT' | 'DON';
-export type PaymentMethod = 'CLICK' | 'PAYME' | 'UZCARD' | 'HUMO' | 'INVOICE_B2B';
+export type PaymentMethod = 'CLICK' | 'PAYME' | 'UZCARD' | 'HUMO' | 'INVOICE_B2B' | 'DIRECT_FARMER';
 export type OrderStatus =
   | 'PENDING_PAYMENT'
   | 'CANCELLED'
@@ -26,7 +26,12 @@ export interface User {
   full_name: string;
   role: Role;
   region: string;
-  tin_or_passport: string;
+  district?: string | null;
+  telegram_chat_id?: string | null;
+  language?: string;
+  is_online?: boolean;
+  vehicle_type?: string | null;
+  tin_or_passport: string | null;
   farm_or_company_name?: string | null;
   kyc_status: KycStatus;
   is_premium: boolean;
@@ -46,9 +51,18 @@ export interface Product {
   min_order_kg: number;
   harvest_date: string;
   image_url: string;
+  image_urls?: string[];
+  unit?: string;
+  pickup_district?: string | null;
+  pickup_address?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  pickup_window?: string | null;
   region: string;
   is_active: boolean;
   created_at: string;
+  _count?: { views: number; orders: number };
+  reviews?: Review[];
   farmer?: {
     id: string;
     full_name: string;
@@ -69,6 +83,12 @@ export interface Order {
   product_id: string;
   product_title?: string | null;
   unit_price_per_kg?: number | null;
+  unit?:string;
+  pickup_district?:string|null;
+  pickup_address?:string|null;
+  pickup_window?:string|null;
+  pickup_lat?:number|null;
+  pickup_lng?:number|null;
   quantity_kg: number;
   product_total_amount: number;
   delivery_fee: number;
@@ -81,6 +101,9 @@ export interface Order {
   status: OrderStatus;
   delivery_address: string;
   delivery_schedule?: string | null;
+  delivery_district?: string | null;
+  delivery_pin?: string | null;
+  delivery_pin_attempts?: number;
   created_at: string;
   product: Product;
   buyer: {
@@ -89,7 +112,7 @@ export interface Order {
     phone: string;
     region: string;
     farm_or_company_name?: string | null;
-    tin_or_passport: string;
+    tin_or_passport: string | null;
   };
   farmer: {
     id: string;
@@ -97,7 +120,7 @@ export interface Order {
     phone: string;
     region: string;
     farm_or_company_name?: string | null;
-    tin_or_passport: string;
+    tin_or_passport: string | null;
     rating: number;
     is_premium: boolean;
   };
@@ -117,6 +140,7 @@ export interface Dispute {
   buyer_id: string;
   reason: string;
   evidence_image_url?: string | null;
+  evidence_signed_url?: string | null;
   status: DisputeStatus;
   refund_amount?: number | null;
   admin_comment?: string | null;
@@ -164,11 +188,12 @@ export interface Transaction {
 }
 
 export interface PriceRecommendation {
-  recommended_price: number;
-  avg_price: number;
-  min_price: number;
-  max_price: number;
+  recommended_price: number | null;
+  avg_price: number | null;
+  min_price: number | null;
+  max_price: number | null;
   sample_count: number;
+  source: 'matched_product' | 'insufficient_data';
   context: string;
 }
 
@@ -227,6 +252,7 @@ export interface InvoiceData {
     name: string;
     category: string;
     quantity_kg: number;
+    unit?: string;
     price_per_kg: number;
     total_price: number;
   }>;
@@ -235,4 +261,37 @@ export interface InvoiceData {
   grand_total: number;
   delivery_schedule: string;
   stamp: string;
+}
+
+export interface ProductAnalytics {
+  unique_views: number;
+  order_count: number;
+  sold_kg: number;
+  earned: number;
+  viewers: Array<{ id: string; last_viewed_at: string; viewer: { id: string; full_name: string; region: string } }>;
+}
+export interface ChatMessage {
+  id: string;
+  client_id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+export interface Conversation {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  updated_at: string;
+  product: { id: string; title: string; image_url: string; is_active: boolean };
+  buyer: { id: string; full_name: string; region: string; role: Role };
+  seller: { id: string; full_name: string; region: string; role: Role };
+  messages?: ChatMessage[];
+  _count?: { messages: number };
+}
+export interface MessagePage {
+  conversation: Conversation;
+  messages: ChatMessage[];
+  next_cursor: string | null;
 }

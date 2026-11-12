@@ -1,5 +1,6 @@
 import React from 'react';
 import { useCart } from '../context/CartContext';
+import { formatQty, formatUnitName } from '../lib/units';
 import { X, Trash2, ShoppingBag, ShieldCheck, ArrowRight } from 'lucide-react';
 
 interface CartDrawerProps {
@@ -61,7 +62,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       {item.product.title}
                     </h4>
                     <div className="text-gray-500 text-[11px] mt-0.5">
-                      {item.product.price_per_kg.toLocaleString()} so'm / kg
+                      {item.product.price_per_kg.toLocaleString()} so'm / {formatUnitName(item.product.unit)}
                     </div>
                   </div>
 
@@ -78,7 +79,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       >
                         -
                       </button>
-                      <span className="font-bold text-gray-900">{item.quantity_kg} kg</span>
+                      <span className="font-bold text-gray-900">{formatQty(item.quantity_kg, item.product.unit)}</span>
                       <button
                         onClick={() =>
                           updateQuantity(
@@ -133,7 +134,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
             <div className="text-[10px] text-emerald-800 bg-emerald-50 p-2 rounded-xl border border-emerald-200 flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>Escrow xavfsiz to'lov tizimi orqali to'lanadi</span>
+              <span>To‘lov usuli keyingi bosqichda ko‘rsatiladi</span>
             </div>
 
             <button

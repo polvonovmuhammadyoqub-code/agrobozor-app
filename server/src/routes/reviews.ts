@@ -11,10 +11,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const reviewerId = req.user!.id;
     const order_id = String(req.body?.order_id ?? '');
     const target_user_id = String(req.body?.target_user_id ?? '');
-    const rating = parseInt(String(req.body?.rating), 10);
+    const rating = Number(req.body?.rating);
     const comment = cleanText(req.body?.comment, 500);
 
-    if (!order_id || !target_user_id || !(rating >= 1 && rating <= 5)) {
+    if (!order_id || !target_user_id || !(Number.isInteger(rating) && rating >= 1 && rating <= 5)) {
       return res.status(400).json({ error: "Buyurtma, baholanuvchi va 1-5 oralig'ida reyting kiritilishi shart" });
     }
 
@@ -31,16 +31,19 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const dup = await prisma.review.findFirst({ where: { order_id, reviewer_id: reviewerId, target_user_id } });
     if (dup) return res.status(400).json({ error: 'Siz allaqachon baholagansiz' });
 
-    const review = await prisma.review.create({
-      data: { order_id, reviewer_id: reviewerId, target_user_id, rating, comment },
+    const review = await prisma.$transaction(async (tx) => {
+      // Serialize updates to this user's aggregate rating.
+      await tx.user.update({ where: { id: target_user_id }, data: { rating: { increment: 0 } } });
+      const created = await tx.review.create({
+        data: { order_id, reviewer_id: reviewerId, target_user_id, rating, comment },
+      });
+      const agg = await tx.review.aggregate({ where: { target_user_id }, _avg: { rating: true } });
+      await tx.user.update({ where: { id: target_user_id }, data: { rating: Math.round(agg._avg.rating! * 100) / 100 } });
+      return created;
     });
-
-    const agg = await prisma.review.aggregate({ where: { target_user_id }, _avg: { rating: true } });
-    if (agg._avg.rating != null) {
-      await prisma.user.update({ where: { id: target_user_id }, data: { rating: Math.round(agg._avg.rating * 100) / 100 } });
-    }
     return res.status(201).json(review);
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === 'P2002') return res.status(409).json({ error: 'Siz allaqachon baholagansiz' });
     console.error('Create review error:', err);
     return res.status(500).json({ error: "Sharh qo'shishda xatolik yuz berdi" });
   }

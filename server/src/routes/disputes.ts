@@ -3,13 +3,14 @@ import prisma from '../db.js';
 import { authenticateToken, requireRole, AuthRequest } from '../middleware/auth.js';
 import { settleOrder } from '../services/settlement.js';
 import { DISPUTE_WINDOW_HOURS } from '../config.js';
-import { cleanText, isHttpUrl, positiveInt } from '../utils/validate.js';
+import { cleanText, positiveInt } from '../utils/validate.js';
+import { supabase } from '../services/supabase.js';
 
 const router = Router();
 const PARTY = { id: true, full_name: true, phone: true, region: true, farm_or_company_name: true } as const;
 const DISPUTABLE = ['CONFIRMED_BY_FARMER', 'IN_TRANSIT', 'DELIVERED'];
 
-// 1. Nizolar ro'yxati
+// 1. Nizolar ro'yxati (har bir nizo uchun xavfsiz 300 soniyalik signed URL generatsiya qilinadi)
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
@@ -27,8 +28,37 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       orderBy: { created_at: 'desc' },
       take: 200,
     });
-    return res.json(disputes);
-  } catch {
+
+    // Har bir nizo uchun evidence_signed_url generatsiya qilish (faqat huquqi bo'lganlarga)
+    const disputesWithSignedUrls = await Promise.all(
+      disputes.map(async (d) => {
+        let evidence_signed_url: string | null = null;
+        if (d.evidence_image_url && d.evidence_image_url.startsWith('private-docs:')) {
+          const filePath = d.evidence_image_url.replace(/^private-docs:/, '');
+          const isAllowed = user.role === 'ADMIN' || d.buyer_id === user.id || d.order?.farmer_id === user.id;
+          if (isAllowed && supabase) {
+            try {
+              const { data: signed } = await supabase.storage.from('private-docs').createSignedUrl(filePath, 300);
+              evidence_signed_url = signed?.signedUrl || null;
+            } catch (e) {
+              console.error('Failed to create signed url for evidence:', e);
+            }
+          }
+        }
+        if (d.order) {
+          delete (d.order as any).delivery_pin;
+        }
+
+        return {
+          ...d,
+          evidence_signed_url,
+        };
+      })
+    );
+
+    return res.json(disputesWithSignedUrls);
+  } catch (err) {
+    console.error('Get disputes error:', err);
     return res.status(500).json({ error: 'Nizolarni yuklashda xatolik' });
   }
 });
@@ -39,15 +69,25 @@ router.post('/', authenticateToken, requireRole(['BUYER_B2C', 'BUYER_B2B']), asy
     const buyerId = req.user!.id;
     const order_id = String(req.body?.order_id ?? '');
     const reason = cleanText(req.body?.reason, 1000);
-    const evidence = req.body?.evidence_image_url;
+    const evidence = req.body?.evidence_image_url ? String(req.body.evidence_image_url).trim() : null;
 
     if (!order_id || reason.length < 10) {
       return res.status(400).json({ error: "Sababni batafsil yozing (kamida 10 belgi)" });
     }
-    if (evidence && !isHttpUrl(evidence)) return res.status(400).json({ error: "Dalil rasmi havolasi noto'g'ri" });
+
+    // Dalil ixtiyoriy. Agar berilgan bo'lsa, aniq private-docs:<buyerId>/<uuid>.(jpg|png|webp) shabloniga mos kelishi shart
+    if (evidence) {
+      const pattern = new RegExp(`^private-docs:${buyerId}/[0-9a-fA-F-]{36}\\.(jpg|png|webp)$`);
+      if (!pattern.test(evidence)) {
+        return res.status(400).json({
+          error: "Dalil rasmi faqat o'zingiz yuklagan private-docs xavfsiz fayli bo'lishi kerak (private-docs:<buyerId>/<uuid>.<ext>)",
+        });
+      }
+    }
 
     const order = await prisma.order.findUnique({ where: { id: order_id } });
     if (!order || order.buyer_id !== buyerId) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+    if(order.payment_method === 'DIRECT_FARMER') return res.status(400).json({error:'Pul fermerga bevosita to‘langan. Qaytarishni fermer bilan kelishing; platformada escrow yo‘q.'});
     if (!DISPUTABLE.includes(order.status)) {
       return res.status(400).json({ error: 'Bu holatdagi buyurtma bo‘yicha nizo ochib bo‘lmaydi' });
     }

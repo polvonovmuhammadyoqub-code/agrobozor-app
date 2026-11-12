@@ -8,6 +8,7 @@ import { sendVerificationEmail } from '../services/email.js';
 import { JWT_SECRET, AUTO_APPROVE_KYC } from '../config.js';
 import { cleanText, normalizePhone, PUBLIC_ROLES } from '../utils/validate.js';
 
+import {fulfillmentFields} from '../utils/fulfillment.js';
 const router = Router();
 const MAX_CODE_ATTEMPTS = 5;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,12 +23,12 @@ async function checkCode(email: string, code: string): Promise<boolean> {
     where: { email, expires_at: { gt: new Date() } },
     orderBy: { created_at: 'desc' },
   });
-  if (!record || record.attempts >= MAX_CODE_ATTEMPTS) return false;
-  if (record.code !== code) {
-    await prisma.emailVerification.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
-    return false;
-  }
-  return true;
+  if (!record) return false;
+  const attempt = await prisma.emailVerification.updateMany({
+    where: { id: record.id, attempts: { lt: MAX_CODE_ATTEMPTS }, expires_at: { gt: new Date() } },
+    data: { attempts: { increment: 1 } },
+  });
+  return attempt.count === 1 && record.code === code;
 }
 
 // 1. Emailga tasdiqlash kodini yuborish
@@ -89,6 +90,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const full_name = cleanText(b.full_name, 120);
     const role = String(b.role ?? '');
     const region = cleanText(b.region, 120);
+    let district:string|null=null;try{district=fulfillmentFields({district:b.district}).district||null;}catch(e){return res.status(400).json({error:(e as Error).message});}
 
     if (!phone) return res.status(400).json({ error: "Telefon raqami noto'g'ri (+998 XX XXX XX XX)" });
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Email manzili noto'g'ri" });
@@ -99,7 +101,7 @@ router.post('/register', async (req: Request, res: Response) => {
     if (!PUBLIC_ROLES.includes(role)) return res.status(400).json({ error: "Noto'g'ri rol tanlandi" });
 
     const tin = cleanText(b.tin_or_passport, 30);
-    if ((role === 'FARMER' || role === 'BUYER_B2B' || role === 'COURIER') && tin.length < 5) {
+    if ((role === 'FARMER' || role === 'BUYER_B2B' || role === 'COURIER') && tin && tin.length < 5) {
       return res.status(400).json({ error: 'STIR yoki pasport raqamini kiriting' });
     }
 
@@ -118,25 +120,33 @@ router.post('/register', async (req: Request, res: Response) => {
     const needsKyc = role === 'FARMER' || role === 'COURIER';
     const kyc_status = !needsKyc || AUTO_APPROVE_KYC ? 'APPROVED' : 'PENDING';
 
-    const user = await prisma.user.create({
-      data: {
-        phone,
-        email,
-        password_hash: await bcrypt.hash(password, 10),
-        full_name,
-        role,
-        region,
-        tin_or_passport: tin || `ID-${Date.now()}`,
-        farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
-        kyc_status,
-      },
+    const password_hash = await bcrypt.hash(password, 10);
+    const user = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.emailVerification.deleteMany({
+        where: { email, code: cleanText(b.verification_code, 10), expires_at: { gt: new Date() }, attempts: { lte: MAX_CODE_ATTEMPTS } },
+      });
+      if (consumed.count !== 1) throw new Error('CODE');
+      return tx.user.create({
+        data: {
+          phone,
+          email,
+          password_hash,
+          full_name,
+          role,
+          region,
+          district,
+          tin_or_passport: tin || null,
+          farm_or_company_name: cleanText(b.farm_or_company_name, 160) || null,
+          kyc_status,
+        },
+      });
     });
-
-    await prisma.emailVerification.deleteMany({ where: { email } }).catch(() => {});
 
     const { password_hash: _, ...safeUser } = user;
     return res.status(201).json({ user: safeUser, token: signToken(user.id) });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message === 'CODE') return res.status(400).json({ error: "Tasdiqlash kodi eskirgan yoki ishlatilgan" });
+    if (err?.code === 'P2002') return res.status(409).json({ error: "Telefon yoki email allaqachon ro'yxatdan o'tgan" });
     console.error('Register error:', err);
     return res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi" });
   }

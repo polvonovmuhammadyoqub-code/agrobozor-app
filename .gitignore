@@ -16,3 +16,5 @@ server/.env
 .vercel/
 .vscode/
 .idea/
+client/test-results/
+client/playwright-report/

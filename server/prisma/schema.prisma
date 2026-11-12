@@ -17,7 +17,7 @@ model User {
   full_name           String
   role                String   // 'FARMER', 'BUYER_B2C', 'BUYER_B2B', 'COURIER', 'ADMIN'
   region              String   // Viloyat / tuman
-  tin_or_passport     String   // STIR yoki pasport seriyasi
+  tin_or_passport     String?  // STIR yoki pasport seriyasi
   farm_or_company_name String? // Fermer yoki kompaniya nomi
   kyc_status          String   @default("PENDING") // 'PENDING', 'APPROVED', 'REJECTED'
   is_premium          Boolean  @default(false)
@@ -27,6 +27,10 @@ model User {
   created_at          DateTime @default(now())
 
   // Relations
+  product_views       ProductView[]
+  conversations_started Conversation[] @relation("ConversationBuyer")
+  conversations_received Conversation[] @relation("ConversationSeller")
+  messages_sent       Message[]
   products            Product[]      @relation("FarmerProducts")
   buyer_orders        Order[]        @relation("BuyerOrders")
   farmer_orders       Order[]        @relation("FarmerOrders")
@@ -36,6 +40,14 @@ model User {
   disputes            Dispute[]
   reviews_given       Review[]       @relation("Reviewer")
   reviews_received    Review[]       @relation("ReviewTarget")
+  telegram_chat_id    String?
+  language            String   @default("uz")
+  is_online           Boolean  @default(false)  // kuryer uchun
+  vehicle_type        String?  // MOTO, CAR, VAN, COLD_VAN
+  district            String?
+  notifications       Notification[]
+  audit_logs          AuditLog[]
+
 }
 
 model Product {
@@ -57,6 +69,16 @@ model Product {
   // Relations
   farmer                User     @relation("FarmerProducts", fields: [farmer_id], references: [id], onDelete: Cascade)
   orders                Order[]
+  views                 ProductView[]
+  conversations         Conversation[]
+  unit                  String   @default("KG") // KG, DONA, LITR, BANKA, QUTI
+  image_urls            String[] @default([])   // ko'p rasmlar; birinchisi image_url bilan sinxron
+  pickup_district       String?
+  pickup_address        String?
+  pickup_lat            Float?
+  pickup_lng            Float?
+  pickup_window         String?  // masalan "06:00–09:00"
+
 }
 
 model Order {
@@ -88,8 +110,27 @@ model Order {
   courier                   User?         @relation("CourierOrders", fields: [courier_id], references: [id])
   product                   Product       @relation(fields: [product_id], references: [id])
   transactions              Transaction[]
+  payme_transaction         PaymeTransaction?
   dispute                   Dispute?
   reviews                   Review[]
+  delivery_pin              String?
+  delivery_pin_attempts     Int           @default(0)
+  delivery_district         String?
+  delivery_lat              Float?
+  delivery_lng              Float?
+  paid_at                   DateTime?
+  confirmed_at              DateTime?
+  picked_up_at              DateTime?
+  notifications             Notification[]
+  audit_logs                AuditLog[]
+
+  unit                      String @default("KG")
+  pickup_district           String?
+  pickup_address            String?
+  pickup_window             String?
+  pickup_lat                Float?
+  pickup_lng                Float?
+
 }
 
 model Transaction {
@@ -122,6 +163,8 @@ model Dispute {
 }
 
 model Review {
+  @@unique([order_id, reviewer_id, target_user_id])
+
   id             String   @id @default(uuid())
   order_id       String
   reviewer_id    String
@@ -159,4 +202,98 @@ model WithdrawalRequest {
 
   // Relations
   user           User      @relation(fields: [user_id], references: [id])
+}
+
+model ProductView {
+  id             String   @id @default(uuid())
+  product_id     String
+  viewer_id      String
+  first_viewed_at DateTime @default(now())
+  last_viewed_at  DateTime @default(now())
+  product        Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  viewer         User     @relation(fields: [viewer_id], references: [id], onDelete: Cascade)
+
+  @@unique([product_id, viewer_id])
+  @@index([product_id, last_viewed_at])
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  product_id String
+  buyer_id   String
+  seller_id  String
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+  product    Product  @relation(fields: [product_id], references: [id])
+  buyer      User     @relation("ConversationBuyer", fields: [buyer_id], references: [id])
+  seller     User     @relation("ConversationSeller", fields: [seller_id], references: [id])
+  messages   Message[]
+
+  @@unique([product_id, buyer_id, seller_id])
+  @@index([buyer_id, updated_at])
+  @@index([seller_id, updated_at])
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  client_id       String   @unique
+  conversation_id String
+  sender_id       String
+  body            String
+  created_at      DateTime @default(now())
+  read_at         DateTime?
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender          User     @relation(fields: [sender_id], references: [id])
+
+  @@index([conversation_id, created_at, id])
+}
+
+model PaymeTransaction {
+  id            String   @id @default(uuid())
+  provider_id   String   @unique
+  order_id      String   @unique
+  amount_tiyin  BigInt
+  provider_time BigInt
+  create_time   DateTime @default(now())
+  expires_at    DateTime
+  perform_time  DateTime?
+  cancel_time   DateTime?
+  state         Int      @default(1)
+  reason        Int?
+  order         Order    @relation(fields: [order_id], references: [id])
+
+  @@index([provider_time])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  user_id    String
+  kind       String    // xabar turi: ORDER_PAID, FARMER_CONFIRMED, DELIVERED va h.k.
+  title      String
+  body       String
+  order_id   String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  // Relations
+  user       User      @relation(fields: [user_id], references: [id])
+  order      Order?    @relation(fields: [order_id], references: [id])
+
+  @@index([user_id, created_at])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actor_id   String
+  action     String   // 'ORDER_DELIVER_OVERRIDE', 'ORDER_RESET_PIN', etc.
+  order_id   String?
+  reason     String?
+  created_at DateTime @default(now())
+
+  // Relations
+  actor      User     @relation(fields: [actor_id], references: [id])
+  order      Order?   @relation(fields: [order_id], references: [id])
+
+  @@index([actor_id, created_at])
+  @@index([order_id, created_at])
 }

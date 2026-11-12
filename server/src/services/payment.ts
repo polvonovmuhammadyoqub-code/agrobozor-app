@@ -1,4 +1,4 @@
-import { PAYMENT_MODE } from '../config.js';
+import { paymentMode } from './payment-options.js';
 
 export interface ChargeResult {
   ok: boolean;
@@ -7,9 +7,6 @@ export interface ChargeResult {
   is_demo?: boolean;
 }
 
-// Takroriy to'lovdan himoya (idempotency kesh)
-const processedPayments = new Set<string>();
-
 /**
  * To'lov shlyuzi adapteri.
  *  - PAYMENT_MODE=mock     -> sinov to'lovlari (real pul yechilmaydi, faqat demo simulyatsiyasi)
@@ -17,14 +14,6 @@ const processedPayments = new Set<string>();
  * Haqiqiy integratsiyada Click Merchant / Payme Business Webhook handlerlari orqali imzolanadi.
  */
 export async function chargeOrder(orderId: string, amount: number, method: string): Promise<ChargeResult> {
-  const idempotencyKey = `${orderId}:${amount}:${method}`;
-  if (processedPayments.has(idempotencyKey)) {
-    return {
-      ok: false,
-      error: "Bu buyurtma uchun to'lov allaqachon amalga oshirilgan",
-    };
-  }
-
   const validOnlineMethods = ['CLICK', 'PAYME', 'UZCARD', 'HUMO'];
   if (!validOnlineMethods.includes(method)) {
     return {
@@ -33,18 +22,17 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
     };
   }
 
-  if (PAYMENT_MODE === 'mock') {
-    processedPayments.add(idempotencyKey);
+  if (paymentMode() === 'mock') {
     return {
       ok: true,
-      reference: `DEMO-${method}-${orderId.slice(0, 8)}-${Date.now()}`,
+      reference: `DEMO-${method}-${orderId}`,
       is_demo: true,
     };
   }
 
   return {
     ok: false,
-    error: "Onlayn to'lov tizimlari (Click/Payme) hozircha test rejimida. Iltimos, B2B hisob-faktura orqali to'lang yoki administrator bilan bog'laning.",
+    error: "Haqiqiy onlayn to‘lov hali yoqilmagan. To‘lov usullarini tekshiring yoki administrator bilan bog‘laning.",
   };
 }
 
@@ -52,11 +40,11 @@ export async function chargeOrder(orderId: string, amount: number, method: strin
  * Qaytarish jarayoni (Refund) uchun to'lov qaytarish adapteri
  */
 export async function refundOrder(orderId: string, amount: number, reference?: string): Promise<{ ok: boolean; refundReference?: string }> {
-  if (PAYMENT_MODE === 'mock') {
+  if (paymentMode() === 'mock') {
     return {
       ok: true,
       refundReference: `REFUND-DEMO-${orderId.slice(0, 8)}-${Date.now()}`,
     };
   }
-  return { ok: true };
+  return { ok: false };
 }

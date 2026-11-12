@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Order } from '../types';
 import { api } from '../lib/api';
 import { X, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { ImageUploader } from './ImageUploader';
 
 interface DisputeModalProps {
   order: Order | null;
@@ -17,9 +18,7 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
   if (!order) return null;
 
   const [reason, setReason] = useState('');
-  const [evidenceUrl, setEvidenceUrl] = useState(
-    'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?auto=format&fit=crop&w=800&q=80'
-  );
+  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +35,7 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
       await api.disputes.create({
         order_id: order.id,
         reason,
-        evidence_image_url: evidenceUrl,
+        evidence_image_url: evidenceUrls[0] || undefined,
       });
       alert('Shikoyat qabul qilindi. Buyurtma "Nizo" holatiga o\'tkazildi va pul Escrowda to\'xtatildi. Admin tekshirib qaror qabul qiladi.');
       onSuccess();
@@ -88,20 +87,15 @@ export const DisputeModal: React.FC<DisputeModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block font-bold text-gray-700 mb-1">
-              Dalil fotosurati havolasi (Evidence Image URL):
-            </label>
-            <div className="flex items-center space-x-2">
-              <ImageIcon className="w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={evidenceUrl}
-                onChange={(e) => setEvidenceUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full p-2.5 rounded-xl border border-gray-200 focus:border-rose-500 focus:outline-none"
-              />
-            </div>
+          <div className="pt-1">
+            <ImageUploader
+              bucket="private-docs"
+              urls={evidenceUrls}
+              onChange={setEvidenceUrls}
+              maxImages={1}
+              label="Dalil fotosurati (ixtiyoriy)"
+              helperText="Kamera orqali suratga oling yoki galereyadan tanlang (private-docs xavfsiz xotirasiga saqlanadi)"
+            />
           </div>
 
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px]">

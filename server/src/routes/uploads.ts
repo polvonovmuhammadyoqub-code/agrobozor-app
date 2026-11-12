@@ -1,0 +1,107 @@
+import { Router, Response } from 'express';
+import { randomUUID } from 'crypto';
+import rateLimit from 'express-rate-limit';
+import { authenticateToken, AuthRequest } from '../middleware/auth.js';
+import { supabase } from '../services/supabase.js';
+
+const router = Router();
+
+// /api/uploads/sign uchun alohida rate limit (30 so'rov / 10 daqiqa / IP)
+const uploadSignLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Rasm yuklash limiti tugadi. 10 daqiqadan keyin qayta urinib ko'ring." },
+});
+
+const ALLOWED_MIME_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+const ALLOWED_BUCKETS = ['product-images', 'private-docs'] as const;
+type AllowedBucket = typeof ALLOWED_BUCKETS[number];
+
+/**
+ * POST /api/uploads/sign
+ * Xavfsiz rasm yuklash uchun imzolangan (signed) PUT URL generatsiya qiladi.
+ * Fayllar server xotirasidan o'tmasdan to'g'ridan-to'g'ri Supabase Storage'ga yuklanadi.
+ */
+router.post('/sign', uploadSignLimiter, authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const user = req.user!;
+    const { bucket, content_type, size_bytes } = req.body || {};
+
+    // 1. Bucket tekshiruvi
+    if (!ALLOWED_BUCKETS.includes(bucket as AllowedBucket)) {
+      return res.status(400).json({
+        error: "Noto'g'ri bucket nomi. Ruxsat etilgan: 'product-images', 'private-docs'",
+      });
+    }
+
+    // 2. Rol bo'yicha kirish huquqi tekshiruvi
+    if (bucket === 'product-images' && user.role !== 'FARMER') {
+      return res.status(403).json({
+        error: 'Mahsulot rasmini faqat fermer yuklay oladi',
+      });
+    }
+
+    if (bucket === 'private-docs' && !['BUYER_B2C', 'BUYER_B2B'].includes(user.role)) {
+      return res.status(403).json({
+        error: 'Nizo dalilini faqat xaridor yuklay oladi',
+      });
+    }
+
+    // 3. MIME type tekshiruvi
+    const ext = ALLOWED_MIME_TYPES[String(content_type).toLowerCase()];
+    if (!ext) {
+      return res.status(400).json({
+        error: 'Ruxsat etilgan rasm turlari: image/jpeg, image/png, image/webp',
+      });
+    }
+
+    if(!Number.isSafeInteger(size_bytes)||size_bytes<1||size_bytes>5*1024*1024)return res.status(400).json({error:'Siqilgan rasm hajmi 1 bayt–5 MB bo‘lishi kerak'});
+
+    // 4. Supabase konfiguratsiyasi mavjudligini tekshirish
+    if (!supabase) {
+      return res.status(503).json({
+        error: "Rasm yuklash xizmati hozircha sozlanmagan. Standart rasm bilan e’lon berishingiz yoki administratorga murojaat qilishingiz mumkin.",
+      });
+    }
+
+    // 5. Serverda xavfsiz unikal fayl nomini generatsiya qilish
+    const fileName = `${user.id}/${randomUUID()}.${ext}`;
+
+    // 6. Imzolangan upload URL olish (createSignedUploadUrl)
+    const { data, error } = await supabase.storage.from(bucket).createSignedUploadUrl(fileName);
+
+    if (error || !data) {
+      console.error('Supabase signed URL error:', error?.message);
+      return res.status(500).json({
+        error: 'Yuklash havolasini yaratishda xatolik yuz berdi',
+      });
+    }
+
+    // 7. Yakuniy URL:
+    // private-docs uchun public_url QAYTARILMAYDI (null), faqat path
+    let publicUrl: string | null = null;
+    if (bucket === 'product-images') {
+      const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+      publicUrl = pubData.publicUrl;
+    }
+
+    return res.json({
+      signed_url: data.signedUrl,
+      public_url: publicUrl,
+      path: fileName,
+      token: data.token,
+    });
+  } catch (err: any) {
+    console.error('Upload sign error:', err?.message || err);
+    return res.status(500).json({ error: 'Serverda xatolik yuz berdi' });
+  }
+});
+
+export default router;

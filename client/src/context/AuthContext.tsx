@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
-import { api, getToken, setToken, removeToken } from '../lib/api';
+import { api, ApiError, getToken, setToken, removeToken } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -20,19 +20,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const refreshUser = async () => {
-    if (!getToken()) {
+    const requestedToken = getToken();
+    if (!requestedToken) {
       setUser(null);
       setLoading(false);
       return;
     }
     try {
       const me = await api.auth.me();
-      setUser(me);
+      if (getToken() === requestedToken) setUser(me);
     } catch (e) {
       console.error('Failed to get current user:', e);
-      removeToken();
-      setTokenState(null);
-      setUser(null);
+      if (getToken() === requestedToken && e instanceof ApiError && e.status === 401) {
+        removeToken();
+        setTokenState(null);
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }

@@ -1,3 +1,4 @@
+import './env.js';
 import { PrismaClient } from '@prisma/client';
 
 // Serverless muhitda har chaqiruvda yangi ulanish ochilmasligi uchun global nusxa.

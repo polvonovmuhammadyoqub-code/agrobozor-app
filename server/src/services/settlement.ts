@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 type Tx = Prisma.TransactionClient;
 
 interface OrderMoney {
+  payment_method?: string;
   id: string;
   buyer_id: string;
   farmer_id: string;
@@ -24,6 +25,7 @@ async function platformUserId(tx: Tx): Promise<string> {
 
 /** To'lov escrow'ga tushganda: pul platformada, fermer escrow balansida ko'rinadi. */
 export async function holdInEscrow(tx: Tx, order: OrderMoney) {
+  if(order.payment_method === 'DIRECT_FARMER') throw new Error('Direct payments never enter platform escrow');
   await tx.user.update({
     where: { id: order.farmer_id },
     data: { wallet_escrow: { increment: order.farmer_payout } },
@@ -40,6 +42,10 @@ export async function holdInEscrow(tx: Tx, order: OrderMoney) {
  * Yetkazish haqi faqat kuryer biriktirilmagan va to'liq qaytarishda qaytariladi.
  */
 export async function settleOrder(tx: Tx, order: OrderMoney, productRefund: number) {
+  if(order.payment_method === 'DIRECT_FARMER') {
+    if(productRefund !== 0) throw new Error('Direct refunds must be arranged with the farmer');
+    return {farmerGets:0,buyerGets:0,courierGets:0,platformGets:0};
+  }
   const pt = order.product_total_amount;
   const r = Math.min(Math.max(Math.round(productRefund), 0), pt);
 

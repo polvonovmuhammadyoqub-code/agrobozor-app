@@ -1,55 +1,59 @@
-# 🌾 AgroBozor — fermerdan to‘g‘ridan-to‘g‘ri xaridorga (MVP)
+# AgroBozor
 
-React + Vite (client) · Express + Prisma (server) · PostgreSQL · Vercel.
+Fermer, xaridor va logist uchun mobilga mos bozor. React/Vite frontend va
+Express/Prisma API bitta Node.js 22+ serverda ishlaydi; baza PostgreSQL.
 
-## Pul oqimi (escrow)
+Standart `PAYMENT_MODE=direct`: xaridor pulni fermerga bevosita beradi, aynan
+buyurtma egasi fermer tushgan to'liq summani tasdiqlaydi. Platforma pul qabul
+qilmaydi, escrow yoki avtomatik refund va'da qilmaydi. Yetkazish haqini fermer
+logistga qo'lda beradi. Click/Payme sozlanmagan holatda faol usul emas.
+Eski B2B platforma bank-to'lovi direct rejimda yopilgan.
 
+## Hosting
+
+To'liq sozlash, xavfsiz migratsiya va chiqarish tartibi:
+[docs/HOSTING.md](docs/HOSTING.md).
+Branchlarni solishtirish va tekshiruv dalillari:
+[docs/RELEASE_CHECK.md](docs/RELEASE_CHECK.md).
+
+```sh
+npm ci --include=dev
+# .env.example asosida server maxfiy sozlamalarini kiriting.
+# Bo'sh baza uchun db:migrate; mavjud baza uchun avval HOSTING.md ni o'qing.
+npm run db:migrate
+npm run build
+npm start
 ```
-Buyurtma  -> PENDING_PAYMENT   (ombor band qilinadi, pul YO‘Q)
-To‘lov    -> PAID_IN_ESCROW    (pul platformada; fermerning "escrow" balansida ko‘rinadi)
-Fermer    -> CONFIRMED_BY_FARMER  (yoki rad etadi -> xaridorga 100% qaytadi)
-Kuryer    -> IN_TRANSIT -> DELIVERED
-Xaridor "Qabul qildim" (yoki 24 soat jimlik) -> COMPLETED
-          -> fermerga 90%, kuryerga 12 000, platformaga 10% + 3 000
-Nizo (24 soat ichida) -> admin: to‘liq / qisman qaytarish / fermer foydasiga
+
+Hosting build: `npm ci --include=dev && npm run build`. Start: `npm start`.
+Server hosting bergan PORTni ishlatadi. Build/start migratsiyani avtomatik bajarmaydi.
+Production bazasida `db:push` yoki reset ishlatmang. Maxfiy .env fayllarini commit qilmang.
+
+## Funksiyalar
+
+- Mobil kirish/ro'yxat, rolga mos kabinet va bozor navigatsiyasi.
+- Fermer mahsulotlari, ko'rish/sotuv statistikasi, shaxsiy sotuvchi-xaridor chati.
+- Supabase rasm yuklash, beshta birlik, tuman/manzil va ixtiyoriy GPS.
+- Atomik ombor rezervi; buyurtma narxi, birligi va olib ketish manzili saqlanadi.
+- Logist buyurtmani oladi; xaridorning maxfiy 4 xonali PIN'i bilan yetkazadi.
+- Admin KYC va sabab qayd etilgan PIN tiklash/yetkazishni tiklash amallari.
+
+## Lokal ishlab chiqish va test
+
+Development uchun `NODE_ENV=development` va alohida lokal baza ishlating.
+`npm run server` va `npm run client` ikki terminalda ishlaydi.
+Avtomatik testlar faqat alohida `TEST_DATABASE_URL` bilan bajarilsin; production
+ulanishini testga bermang. Baza bo'lmasa DB testlari skipped deb hisoblanadi.
+
+```sh
+npm test
+npm exec --workspace client -- playwright install chromium
+npm run test:browser --workspace client
+npm audit --audit-level=moderate
 ```
-Barcha hisob-kitob `server/src/services/settlement.ts` ichida; har holatda
-`xaridorga + fermerga + kuryerga + platformaga = to‘langan summa` bo‘ladi.
 
-## ⚠️ Hozirgi cheklov: haqiqiy to‘lov yo‘q
-`PAYMENT_MODE=mock` — test to‘lov (haqiqiy pul harakatlanmaydi). Production'da standart `disabled`.
-Click/Payme merchant API (redirect + webhook) `server/src/services/payment.ts` ga ulanadi.
-B2B uchun `INVOICE_B2B`: admin bank o‘tkazmasini `/api/admin/orders/:id/confirm-payment` bilan tasdiqlaydi.
-
-## Ishga tushirish
-
-1. **PostgreSQL** oching (bepul: neon.tech yoki supabase.com).
-2. `server/.env.example` → `server/.env` (lokal) yoki Vercel → Environment Variables:
-   `DATABASE_URL`, `DIRECT_URL` (Supabase: ikkalasi ham Connect bo‘limida), `JWT_SECRET` (32+ belgi), `RESEND_API_KEY`, `EMAIL_FROM`, `PAYMENT_MODE`.
-3. Lokal:
-   ```bash
-   npm install
-   npm run db:push            # jadvallarni yaratadi
-   ADMIN_PHONE=+998901234567 ADMIN_EMAIL=admin@agrobozor.uz ADMIN_PASSWORD='kamida-12-belgi' npm run create-admin
-   npm run server             # terminal 1 (5000)
-   npm run client             # terminal 2 (3000)
-   ```
-4. Vercel: repo'ni import qiling, o‘zgaruvchilarni kiriting. `npm run build` jadvallarni avtomatik yangilaydi.
-   Admin yaratish uchun bir marta lokal kompyuterdan (Vercel `DATABASE_URL` bilan) `npm run create-admin` ni ishga tushiring.
-
-## Rollar va tekshiruv
-- Ommaviy ro‘yxatdan faqat: FARMER, BUYER_B2C, BUYER_B2B, COURIER. **ADMIN faqat `create-admin` orqali.**
-- Fermer/kuryer admin tasdig‘idan (KYC) o‘tmaguncha mahsuloti ko‘rinmaydi / buyurtma ololmaydi.
-  Demo uchun `AUTO_APPROVE_KYC=true`.
-
-## Keyingi qadamlar (MVP'dan keyin)
-Click/Payme integratsiyasi · rasm yuklash (Vercel Blob/Cloudinary) · SMS (Eskiz/Playmobile) · avtomatik testlar · Sentry.
-
-## Admin yaratish (kompyutersiz) — Supabase SQL Editor
-```sql
-insert into "User" (id, phone, email, password_hash, full_name, role, region, tin_or_passport, kyc_status)
-values (gen_random_uuid()::text, '+998901234567', 'admin@agrobozor.uz',
-        crypt('KAMIDA-12-BELGILI-PAROL', gen_salt('bf', 10)),
-        'AgroBozor Admin', 'ADMIN', 'Toshkent', 'ADMIN', 'APPROVED');
-```
-(`create extension if not exists pgcrypto;` kerak bo‘lsa avval shuni ishga tushiring.)
+Admin faqat `npm run create-admin` orqali yaratiladi; fermer/logist KYC sini admin
+tasdiqlaydi. `AUTO_APPROVE_KYC` va `ALLOW_DEV_CODES` productionda false qoladi.
+Payme merchant shartnomasi va haqiqiy sandbox tekshiruvi alohida bosqich:
+[PAYMENTS.md](PAYMENTS.md). Oldingi audit hujjatlari tarixiy kontekst;
+hosting uchun yuqoridagi yangi qo'llanma asosiy manba.

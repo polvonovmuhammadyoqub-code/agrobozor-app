@@ -8,22 +8,29 @@ export const authenticateToken = async (req, res, next) => {
     if (!token) {
         return res.status(401).json({ error: "Avtorizatsiya talab qilinadi (Token yo'q)" });
     }
+    let userId;
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        if (!decoded?.id)
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+        if (typeof decoded?.id !== 'string' || !decoded.id)
             throw new Error('bad token');
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.id },
-            select: { id: true, phone: true, role: true, full_name: true, kyc_status: true },
-        });
-        if (!user) {
-            return res.status(401).json({ error: 'Foydalanuvchi topilmadi. Qaytadan kiring.' });
-        }
-        req.user = user;
-        next();
+        userId = decoded.id;
     }
     catch {
         return res.status(401).json({ error: "Yaroqsiz yoki muddati o'tgan token" });
+    }
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, phone: true, role: true, full_name: true, kyc_status: true },
+        });
+        if (!user)
+            return res.status(401).json({ error: 'Foydalanuvchi topilmadi. Qaytadan kiring.' });
+        req.user = user;
+        next();
+    }
+    catch (err) {
+        console.error('Authentication database error:', err);
+        return res.status(503).json({ error: 'Server vaqtincha ishlamayapti. Qayta urinib ko‘ring.' });
     }
 };
 export const requireRole = (allowedRoles) => {

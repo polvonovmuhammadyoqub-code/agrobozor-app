@@ -1,5 +1,9 @@
 // Platforma ADMIN hisobini yaratadi (escrow daromadi ham shu hisobga yig'iladi).
 // Ishlatish:  ADMIN_PHONE=+998901234567 ADMIN_EMAIL=admin@agrobozor.uz ADMIN_PASSWORD='kuchli-parol' npm run create-admin
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
+dotenv.config();
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -26,7 +30,7 @@ try {
         full_name: 'AgroBozor Admin',
         role: 'ADMIN',
         region: 'Toshkent',
-        tin_or_passport: 'ADMIN',
+        tin_or_passport: null,
         kyc_status: 'APPROVED',
       },
     });

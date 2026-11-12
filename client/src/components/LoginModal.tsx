@@ -78,7 +78,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="text-xl font-extrabold tracking-tight">
                 Agro<span className="text-agro-amber">Bozor</span>
               </div>
-              <div className="text-[11px] text-emerald-200">Xavfsiz Escrow Agro-Savdo</div>
+              <div className="text-[11px] text-emerald-200">Fermer, xaridor va logist bir joyda</div>
             </div>
           </div>
           <h2 className="text-lg font-bold mt-2">Tizimga kirish</h2>
@@ -99,12 +99,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Telefon raqami yoki Email */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
+              <label htmlFor="login-identifier" className="block text-xs font-bold text-gray-700 mb-1">
                 Telefon raqami yoki Email
               </label>
               <div className="relative">
                 <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-identifier"
+                  autoComplete="username"
+                  autoCapitalize="none"
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -117,12 +120,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             {/* Parol */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
+              <label htmlFor="login-password" className="block text-xs font-bold text-gray-700 mb-1">
                 Parol
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="login-password"
+                  autoComplete="current-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -159,7 +164,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {/* Xavfsizlik eslatmasi */}
           <div className="flex items-center space-x-2 p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-[11px] text-emerald-800">
             <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>Mablag'lar va shaxsiy ma'lumotlar 100% himoyalangan</span>
+            <span>To‘lov usuli va buyurtma holatini ilovada kuzating</span>
           </div>
 
           {/* Ro'yxatdan o'tish havolasi */}
